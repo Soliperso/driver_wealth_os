@@ -79,6 +79,27 @@ class DrivingSessionController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Whether the driver still has to be asked for location at all.
+  ///
+  /// Used to decide if the disclosure needs showing: a driver who already
+  /// granted access should not be made to read it again.
+  Future<bool> needsPermissionRequest() async {
+    final permission = await _tracker.checkPermission();
+    return permission != LocationPermissionState.always;
+  }
+
+  /// Escalates foreground access to background access mid-shift.
+  ///
+  /// Returns true once the platform reports *always*. Anything else leaves the
+  /// warning in place rather than claiming success the OS did not grant.
+  Future<bool> upgradeToBackgroundTracking() async {
+    final permission = await _tracker.requestAlwaysPermission();
+    final granted = permission == LocationPermissionState.always;
+    _backgroundLimited = !granted && isDriving;
+    notifyListeners();
+    return granted;
+  }
+
   Future<StartResult> start({
     required WorkPlatform platform,
     required double vehicleCostPerMile,

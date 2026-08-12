@@ -12,6 +12,8 @@ import '../../accounts/presentation/platform_logo.dart';
 import '../../accounts/presentation/work_accounts_screen.dart';
 import '../../coach/presentation/coach_screen.dart';
 import '../../driving/application/driving_session_controller.dart';
+import '../../driving/application/location_tracker.dart';
+import '../../driving/presentation/location_disclosure_sheet.dart';
 import '../../freedom/domain/freedom_goal.dart';
 import '../../freedom/presentation/freedom_screen.dart';
 import '../../history/presentation/history_screen.dart';
@@ -185,6 +187,9 @@ class _AppShellState extends State<AppShell> {
             widget.drivingController?.backgroundLimited ?? false,
         onStartDriving: widget.drivingController == null ? null : _startDriving,
         onEndShift: widget.drivingController == null ? null : _endShift,
+        onUpgradeBackground: widget.drivingController == null
+            ? null
+            : _upgradeBackground,
         drivingRefreshInterval: widget.drivingRefreshInterval,
       ),
       1 => HistoryScreen(
@@ -308,6 +313,16 @@ class _AppShellState extends State<AppShell> {
     );
     if (platform == null || !mounted) return;
 
+    // Explain before the OS asks. Play policy requires a prominent disclosure
+    // ahead of a background-location request, and a driver deserves to know
+    // what is being collected before the system dialog gives them two words
+    // and two buttons.
+    if (await controller.needsPermissionRequest()) {
+      if (!mounted) return;
+      final agreed = await LocationDisclosureSheet.show(context);
+      if (!agreed || !mounted) return;
+    }
+
     final result = await controller.start(
       platform: platform,
       vehicleCostPerMile: widget.vehicleCostPerMile,
@@ -318,17 +333,58 @@ class _AppShellState extends State<AppShell> {
       return;
     }
     // Location is the whole feature, so a refusal is explained rather than
-    // silently leaving the driver on a screen where nothing happened.
+    // silently leaving the driver on a screen where nothing happened. When the
+    // app can no longer fix it itself, the message carries a way out.
+    final failure = result.failure!;
+    final needsSettings =
+        failure == StartFailure.permissionDeniedForever ||
+        failure == StartFailure.serviceDisabled;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(switch (result.failure!) {
+        content: Text(switch (failure) {
           StartFailure.serviceDisabled =>
-            'Turn on location services to track miles.',
+            'Location services are off. Turn them on to track miles.',
           StartFailure.permissionDenied =>
-            'Driver Wealth needs location access to track your miles.',
+            'Driver Wealth needs location access to track your miles. You can '
+                'still enter a shift by hand.',
           StartFailure.permissionDeniedForever =>
-            'Location is blocked. Enable it for Driver Wealth in Settings.',
+            'Location is blocked for Driver Wealth. Only Settings can undo it.',
         }),
+        duration: const Duration(seconds: 6),
+        action: needsSettings
+            ? SnackBarAction(
+                label: 'Settings',
+                onPressed: GeolocatorLocationTracker.openSettings,
+              )
+            : null,
+      ),
+    );
+  }
+
+  Future<void> _upgradeBackground() async {
+    final controller = widget.drivingController;
+    if (controller == null) return;
+    final granted = await controller.upgradeToBackgroundTracking();
+    if (!mounted) return;
+    if (granted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Tracking the full shift now.')),
+      );
+      return;
+    }
+    // The OS may decline to re-prompt at all, in which case Settings is the
+    // only route and saying so beats silently doing nothing.
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text(
+          'Set location to “Always” for Driver Wealth to keep counting miles '
+          'in the background.',
+        ),
+        duration: const Duration(seconds: 6),
+        action: SnackBarAction(
+          label: 'Settings',
+          onPressed: GeolocatorLocationTracker.openSettings,
+        ),
       ),
     );
   }

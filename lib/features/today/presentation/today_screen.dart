@@ -27,6 +27,7 @@ class TodayScreen extends StatelessWidget {
     this.drivingBackgroundLimited = false,
     this.onStartDriving,
     this.onEndShift,
+    this.onUpgradeBackground,
     this.drivingRefreshInterval = const Duration(seconds: 1),
   });
 
@@ -45,6 +46,7 @@ class TodayScreen extends StatelessWidget {
   final bool drivingBackgroundLimited;
   final VoidCallback? onStartDriving;
   final Future<void> Function()? onEndShift;
+  final Future<void> Function()? onUpgradeBackground;
 
   /// Null freezes the live clock. See [DrivingHero.refreshInterval].
   final Duration? drivingRefreshInterval;
@@ -120,6 +122,7 @@ class TodayScreen extends StatelessWidget {
                   session: drivingSession!,
                   backgroundLimited: drivingBackgroundLimited,
                   onEndShift: onEndShift ?? () async {},
+                  onUpgradeBackground: onUpgradeBackground,
                   refreshInterval: drivingRefreshInterval,
                 )
               else ...[

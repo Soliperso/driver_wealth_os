@@ -32,6 +32,20 @@ abstract interface class LocationTracker {
 
   Future<LocationPermissionState> requestPermission();
 
+  /// Asks the platform to escalate foreground access to background access.
+  ///
+  /// Deliberately separate from [requestPermission] because neither OS grants
+  /// background location in one step:
+  /// - iOS shows *When In Use* first and only offers *Always* on a later,
+  ///   separate prompt.
+  /// - Android 10+ requires `ACCESS_BACKGROUND_LOCATION` to be requested after
+  ///   foreground access has already been granted.
+  ///
+  /// The OS decides whether a prompt actually appears — it may silently return
+  /// the current state, or send the driver to Settings instead. The result is
+  /// whatever the platform reports afterwards, not a promise of success.
+  Future<LocationPermissionState> requestAlwaysPermission();
+
   Stream<DriverLocation> get locations;
 
   Future<void> start();
@@ -67,6 +81,30 @@ final class GeolocatorLocationTracker implements LocationTracker {
     }
     return _map(permission);
   }
+
+  @override
+  Future<LocationPermissionState> requestAlwaysPermission() async {
+    if (!await Geolocator.isLocationServiceEnabled()) {
+      return LocationPermissionState.serviceDisabled;
+    }
+    final current = await Geolocator.checkPermission();
+    if (current == LocationPermission.always) {
+      return LocationPermissionState.always;
+    }
+    // Only meaningful once foreground access exists; asking before that just
+    // re-runs the first prompt.
+    if (current != LocationPermission.whileInUse) {
+      return _map(current);
+    }
+    return _map(await Geolocator.requestPermission());
+  }
+
+  /// Opens the OS settings page for this app.
+  ///
+  /// The escape hatch for a driver who has permanently denied location, or
+  /// whose platform will not re-prompt for *Always* — in both cases the app
+  /// cannot fix it and Settings is the only route.
+  static Future<void> openSettings() => Geolocator.openAppSettings();
 
   @override
   Future<void> start() async {

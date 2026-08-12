@@ -1,6 +1,7 @@
 import 'package:driver_wealth_os/app.dart';
 import 'package:driver_wealth_os/core/persistence/app_store.dart';
 import 'package:driver_wealth_os/features/accounts/domain/work_platform.dart';
+import 'package:driver_wealth_os/features/driving/application/location_tracker.dart';
 import 'package:driver_wealth_os/features/driving/domain/driver_location.dart';
 import 'package:driver_wealth_os/features/driving/domain/driving_session.dart';
 import 'package:driver_wealth_os/features/shifts/domain/shift.dart';
@@ -96,6 +97,94 @@ void main() {
     expect(saved.platform, WorkPlatform.uber);
     // Time and miles were measured; only the money came from the driver.
     expect(saved.netProfit, lessThan(287));
+  });
+
+  testWidgets('the disclosure is shown before the OS prompt, and can be '
+      'declined without starting anything', (tester) async {
+    // Foreground-only: the app still needs to ask, so the disclosure applies.
+    final tracker = FakeLocationTracker(
+      permission: LocationPermissionState.whileInUse,
+    );
+    addTearDown(tracker.dispose);
+    final store = MemoryAppStore(const AppSnapshot(driverName: 'Ahmed'));
+
+    await tester.pumpWidget(
+      DriverWealthApp(
+        store: store,
+        locationTracker: tracker,
+        drivingRefreshInterval: null,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('start-driving-button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('start-platform-uber')));
+    await tester.pumpAndSettle();
+
+    // Explained before the system dialog, not after.
+    expect(find.text('Why Driver Wealth needs your location'), findsOneWidget);
+    expect(
+      find.textContaining('Only during a shift you started'),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byKey(const ValueKey('location-disclosure-decline')));
+    await tester.pumpAndSettle();
+
+    // Proves the tap actually landed. Without this the test would still pass
+    // if the button were off-screen, since a missed tap and a decline look
+    // identical from the outside.
+    expect(find.text('Why Driver Wealth needs your location'), findsNothing);
+
+    // Declining is a real answer: nothing was started and nothing persisted.
+    expect(find.byKey(const ValueKey('driving-session-active')), findsNothing);
+    expect(store.snapshot.activeSession, isNull);
+    expect(tracker.started, isFalse);
+    // The manual route stays available to a driver who said no.
+    expect(find.text('Enter a shift manually'), findsOneWidget);
+  });
+
+  testWidgets('accepting the disclosure starts a shift and warns that only '
+      'foreground location was granted', (tester) async {
+    final tracker = FakeLocationTracker(
+      permission: LocationPermissionState.whileInUse,
+    );
+    addTearDown(tracker.dispose);
+    final store = MemoryAppStore(const AppSnapshot(driverName: 'Ahmed'));
+
+    await tester.pumpWidget(
+      DriverWealthApp(
+        store: store,
+        locationTracker: tracker,
+        drivingRefreshInterval: null,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('start-driving-button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('start-platform-uber')));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey('location-disclosure-continue')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('driving-session-active')),
+      findsOneWidget,
+    );
+    // Under-counted miles inflate profit, so the limitation is stated rather
+    // than left for the driver to discover in a wrong number.
+    expect(
+      find.byKey(const ValueKey('background-limited-notice')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('upgrade-background-button')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('a session running at launch is resumed, not lost', (

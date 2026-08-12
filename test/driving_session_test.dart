@@ -270,6 +270,53 @@ void main() {
       expect(draft!.hours, closeTo(5, .001));
     });
 
+    test('asks for the disclosure only when permission is missing', () async {
+      tracker.permission = LocationPermissionState.always;
+      expect(await build().needsPermissionRequest(), isFalse);
+
+      tracker.permission = LocationPermissionState.whileInUse;
+      // Foreground-only still needs asking: the escalation to background is
+      // the whole point of the prompt.
+      expect(await build().needsPermissionRequest(), isTrue);
+
+      tracker.permission = LocationPermissionState.denied;
+      expect(await build().needsPermissionRequest(), isTrue);
+    });
+
+    test('upgrading to background clears the warning when granted', () async {
+      tracker.permission = LocationPermissionState.whileInUse;
+      tracker.permissionAfterUpgrade = LocationPermissionState.always;
+      final controller = build();
+      await controller.start(
+        platform: WorkPlatform.uber,
+        vehicleCostPerMile: .30,
+      );
+      expect(controller.backgroundLimited, isTrue);
+
+      final granted = await controller.upgradeToBackgroundTracking();
+
+      expect(granted, isTrue);
+      expect(tracker.upgradeRequested, isTrue);
+      expect(controller.backgroundLimited, isFalse);
+    });
+
+    test('a refused upgrade leaves the warning in place', () async {
+      tracker.permission = LocationPermissionState.whileInUse;
+      // The OS declined to re-prompt, which it is entitled to do.
+      tracker.permissionAfterUpgrade = null;
+      final controller = build();
+      await controller.start(
+        platform: WorkPlatform.uber,
+        vehicleCostPerMile: .30,
+      );
+
+      final granted = await controller.upgradeToBackgroundTracking();
+
+      expect(granted, isFalse);
+      // Never claim background tracking the platform did not actually grant.
+      expect(controller.backgroundLimited, isTrue);
+    });
+
     test('discard abandons a session without creating a shift', () async {
       final controller = build();
       await controller.start(

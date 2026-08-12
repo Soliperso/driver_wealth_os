@@ -20,6 +20,7 @@ class DrivingHero extends StatefulWidget {
     required this.onEndShift,
     this.backgroundLimited = false,
     this.refreshInterval = const Duration(seconds: 1),
+    this.onUpgradeBackground,
   });
 
   final DrivingSession session;
@@ -28,6 +29,9 @@ class DrivingHero extends StatefulWidget {
   /// Only foreground location was granted, so mileage may stall once the
   /// driver switches to Uber.
   final bool backgroundLimited;
+
+  /// Escalates to background location without leaving the shift.
+  final Future<void> Function()? onUpgradeBackground;
 
   /// How often the displayed clock re-reads the wall clock. Pass null to hold
   /// a single frame.
@@ -154,7 +158,7 @@ class _DrivingHeroState extends State<DrivingHero> {
           ),
           if (widget.backgroundLimited) ...[
             Space.gapMd,
-            _LimitedBackgroundNotice(),
+            _LimitedBackgroundNotice(onUpgrade: widget.onUpgradeBackground),
           ],
           Space.gapXl,
           FilledButton(
@@ -209,29 +213,58 @@ class _LiveDot extends StatelessWidget {
   }
 }
 
+/// Surfaced when only foreground location was granted.
+///
+/// Worth interrupting for: silently under-counting miles shrinks the vehicle
+/// cost and inflates the profit figure, so a driver who thinks they are being
+/// tracked and is not would be misled in the flattering direction.
 class _LimitedBackgroundNotice extends StatelessWidget {
+  const _LimitedBackgroundNotice({this.onUpgrade});
+
+  final Future<void> Function()? onUpgrade;
+
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     return Container(
+      key: const ValueKey('background-limited-notice'),
       padding: const EdgeInsets.all(Space.md),
       decoration: BoxDecoration(
         color: colors.surface.withValues(alpha: .6),
         borderRadius: BorderRadius.circular(Radii.sm),
       ),
-      child: Row(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.info_outline_rounded, size: 16, color: colors.onSurface),
-          const SizedBox(width: Space.sm),
-          Expanded(
-            child: Text(
-              'Location is set to “While Using”. Miles may stop counting when '
-              'you switch to another app — choose “Always” to track a full '
-              'shift.',
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                Icons.info_outline_rounded,
+                size: 16,
+                color: colors.onSurface,
+              ),
+              const SizedBox(width: Space.sm),
+              Expanded(
+                child: Text(
+                  'Location is set to “While Using”. Your miles may stop '
+                  'counting when you switch to another app.',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ),
+            ],
           ),
+          if (onUpgrade != null) ...[
+            const SizedBox(height: Space.sm),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                key: const ValueKey('upgrade-background-button'),
+                onPressed: () => onUpgrade!(),
+                child: const Text('Track the full shift'),
+              ),
+            ),
+          ],
         ],
       ),
     );
