@@ -461,7 +461,7 @@ class _TrackedSummary extends StatelessWidget {
           Expanded(
             child: _TrackedMetric(
               label: 'Tracked time',
-              value: _hoursLabel(shift.hours),
+              value: Money.hours(shift.hours),
             ),
           ),
           Container(
@@ -478,12 +478,6 @@ class _TrackedSummary extends StatelessWidget {
         ],
       ),
     );
-  }
-
-  static String _hoursLabel(double hours) {
-    final whole = hours.floor();
-    final minutes = ((hours - whole) * 60).round();
-    return '${whole}h ${minutes.toString().padLeft(2, '0')}m';
   }
 }
 

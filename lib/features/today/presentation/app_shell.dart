@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
 import '../../../core/config/backend_config.dart';
+import '../../../core/format/money.dart';
 import '../../../core/widgets/brand_mark.dart';
 import '../../../core/widgets/soft_surfaces.dart';
 import '../../accounts/application/earnings_connection_gateway.dart';
@@ -44,6 +46,11 @@ class AppShell extends StatefulWidget {
     this.onRefreshEarnings,
     this.drivingController,
     this.drivingRefreshInterval = const Duration(seconds: 1),
+    this.pendingDraft,
+    this.onPendingDraftChanged,
+    this.storageError,
+    this.accountEmail,
+    this.onSignOut,
   });
   final String driverName;
   final List<Shift> shifts;
@@ -63,6 +70,19 @@ class AppShell extends StatefulWidget {
   final Future<void> Function()? onRefreshEarnings;
   final DrivingSessionController? drivingController;
   final Duration? drivingRefreshInterval;
+
+  /// A tracked shift whose earnings were never entered. Offered for recovery
+  /// instead of being discarded — the driving cannot be done again.
+  final Shift? pendingDraft;
+  final ValueChanged<Shift?>? onPendingDraftChanged;
+
+  /// Non-null when writing to device storage failed.
+  final String? storageError;
+
+  /// The signed-in account, shown so the driver can tell which one they are
+  /// looking at. Null in a local-only build.
+  final String? accountEmail;
+  final Future<void> Function()? onSignOut;
 
   @override
   State<AppShell> createState() => _AppShellState();
@@ -114,13 +134,23 @@ class _PlatformPickerSheet extends StatelessWidget {
   );
 }
 
-class _AppShellState extends State<AppShell> {
+class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   int _index = 0;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     widget.drivingController?.addListener(_onDrivingChanged);
+  }
+
+  /// Location permission and the stream subscription can both change while the
+  /// app is in the background, and neither reports back. Coming to the
+  /// foreground is the app's only chance to notice.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) return;
+    unawaited(widget.drivingController?.refreshAfterResume());
   }
 
   @override
@@ -134,6 +164,7 @@ class _AppShellState extends State<AppShell> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     widget.drivingController?.removeListener(_onDrivingChanged);
     super.dispose();
   }
@@ -185,12 +216,22 @@ class _AppShellState extends State<AppShell> {
         drivingSession: widget.drivingController?.session,
         drivingBackgroundLimited:
             widget.drivingController?.backgroundLimited ?? false,
+        drivingTrackingInterrupted:
+            widget.drivingController?.trackingInterrupted ?? false,
         onStartDriving: widget.drivingController == null ? null : _startDriving,
         onEndShift: widget.drivingController == null ? null : _endShift,
         onUpgradeBackground: widget.drivingController == null
             ? null
             : _upgradeBackground,
         drivingRefreshInterval: widget.drivingRefreshInterval,
+        pendingDraft: widget.pendingDraft,
+        onResumeDraft: widget.pendingDraft == null
+            ? null
+            : () => _enterEarnings(widget.pendingDraft!),
+        onDiscardDraft: widget.pendingDraft == null
+            ? null
+            : _discardPendingDraft,
+        storageError: widget.storageError,
       ),
       1 => HistoryScreen(
         shifts: widget.shifts,
@@ -217,6 +258,9 @@ class _AppShellState extends State<AppShell> {
         onVehicleCostPerMileChanged: widget.onVehicleCostPerMileChanged,
         themeMode: widget.themeMode,
         onThemeModeChanged: widget.onThemeModeChanged,
+        accountEmail: widget.accountEmail,
+        onSignOut: widget.onSignOut == null ? null : _confirmSignOut,
+        onConnectAccounts: _connectAccounts,
       ),
     };
     if (!wide) {
@@ -395,6 +439,16 @@ class _AppShellState extends State<AppShell> {
     final draft = await controller.end();
     if (draft == null || !mounted) return;
 
+    // Banked before the earnings screen opens, not after it closes. The hours
+    // and miles are already spent; if the driver backs out, or the OS kills
+    // the app on that screen, the draft has to still be here.
+    widget.onPendingDraftChanged?.call(draft);
+    await _enterEarnings(draft);
+  }
+
+  /// Opens the earnings screen for a tracked draft. Saving retires the draft;
+  /// anything else leaves it recoverable from Today.
+  Future<void> _enterEarnings(Shift draft) async {
     // The session supplies hours and miles; the money is still the driver's
     // to enter until an earnings source can supply it.
     await Navigator.of(context).push(
@@ -407,6 +461,62 @@ class _AppShellState extends State<AppShell> {
       ),
     );
     if (mounted) setState(() => _index = 0);
+  }
+
+  Future<void> _confirmSignOut() async {
+    // Signing out wipes this device's copy so the next person to sign in here
+    // does not see the previous driver's earnings. Worth spelling out.
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Sign out?'),
+        content: const Text(
+          'Your shifts and goals stay on your account and come back when you '
+          'sign in again. They will be removed from this device.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            key: const ValueKey('confirm-sign-out'),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Sign out'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) await widget.onSignOut?.call();
+  }
+
+  Future<void> _discardPendingDraft() async {
+    final draft = widget.pendingDraft;
+    if (draft == null) return;
+    // Explicit confirmation: this is the one action that throws away tracked
+    // driving, and it cannot be undone.
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Discard tracked shift?'),
+        content: Text(
+          '${Money.hours(draft.hours)} and ${Money.number(draft.miles)} miles '
+          'were tracked. Discarding this cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Keep'),
+          ),
+          FilledButton(
+            key: const ValueKey('confirm-discard-draft'),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Discard'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) widget.onPendingDraftChanged?.call(null);
   }
 
   void _openShift(Shift shift) {

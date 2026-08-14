@@ -1,3 +1,4 @@
+import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../shifts/domain/shift.dart';
@@ -24,6 +25,16 @@ class SyncStatus {
     this.recordsProcessed = 0,
     this.errorMessage,
   });
+
+  /// A failure the app itself hit while fetching, as opposed to one the
+  /// backend recorded in `sync_jobs`. Reported the same way so an unreachable
+  /// backend looks like what it is rather than like "no earnings yet".
+  SyncStatus.localFailure(String message)
+    : state = SyncState.failed,
+      startedAt = DateTime.now(),
+      finishedAt = DateTime.now(),
+      recordsProcessed = 0,
+      errorMessage = message;
 
   final SyncState state;
   final DateTime startedAt;
@@ -84,11 +95,15 @@ final class SupabaseEarningsRepository implements EarningsRepository {
     final client = Supabase.instance.client;
     if (client.auth.currentSession == null) return const [];
 
+    // Resolved once: the zone cannot change mid-pull, and asking the platform
+    // per page would make the pages disagree if it somehow did.
+    final timeZone = await _localTimeZoneName();
+
     final rows = <Map<String, Object?>>[];
     for (var page = 0; page < _maxPages; page++) {
       final offset = page * _pageSize;
       final response = await client
-          .rpc('imported_shift_days', params: {'tz_name': _localTimeZoneName()})
+          .rpc('imported_shift_days', params: {'tz_name': timeZone})
           .range(offset, offset + _pageSize - 1);
       if (response is! List) break;
       rows.addAll(response.whereType<Map>().map(Map<String, Object?>.from));
@@ -121,8 +136,17 @@ final class SupabaseEarningsRepository implements EarningsRepository {
   static Shift? _toShift(Map<String, Object?> row, double vehicleCostPerMile) {
     final day = DateTime.tryParse(row['local_day'] as String? ?? '');
     if (day == null) return null;
+    // The provider string the backend aggregated by, which is not always a
+    // platform the app has an icon for. The id is built from *this* rather than
+    // from the mapped platform: two unrecognised providers on the same day both
+    // map to `other`, and keying on that made the second silently overwrite the
+    // first, understating the driver's gross for the day.
+    final providerId = switch (row['platform']) {
+      final String value when value.trim().isNotEmpty => value.trim(),
+      _ => WorkPlatform.other.id,
+    };
     final platform = WorkPlatform.values.firstWhere(
-      (candidate) => candidate.id == row['platform'],
+      (candidate) => candidate.id == providerId,
       orElse: () => WorkPlatform.other,
     );
 
@@ -135,7 +159,7 @@ final class SupabaseEarningsRepository implements EarningsRepository {
         lastActivity ?? DateTime(day.year, day.month, day.day, 23, 59);
 
     return Shift(
-      id: importedShiftId(platform, day),
+      id: importedShiftId(providerId, day),
       platform: platform,
       gross: _positive(row['gross']),
       hours: _positive(row['hours']),
@@ -161,22 +185,47 @@ final class SupabaseEarningsRepository implements EarningsRepository {
     return parsed.isFinite && parsed > 0 ? parsed : 0;
   }
 
-  static String _localTimeZoneName() {
-    // Falls back to a fixed UTC offset when the platform gives no IANA name;
-    // Postgres accepts both forms.
-    final offset = DateTime.now().timeZoneOffset;
-    final sign = offset.isNegative ? '-' : '+';
-    final hours = offset.inHours.abs().toString().padLeft(2, '0');
-    final minutes = (offset.inMinutes.abs() % 60).toString().padLeft(2, '0');
-    return 'UTC$sign$hours:$minutes';
+  /// The device's IANA zone name, e.g. `America/New_York`.
+  ///
+  /// This used to synthesise `UTC±HH:MM` from the current offset, which was
+  /// wrong twice over:
+  ///
+  /// 1. **The sign inverted.** Postgres has no such zone name, so it falls back
+  ///    to POSIX parsing — where a positive offset means *west* of Greenwich,
+  ///    the opposite of ISO 8601. `UTC-05:00` resolved to UTC+5, putting a New
+  ///    York driver's day boundary ten hours out. Verified directly:
+  ///    `timezone('UTC-05:00', …)` and `timezone('America/New_York', …)`
+  ///    return times ten hours apart.
+  /// 2. **No DST.** A single offset captured today was applied to every
+  ///    historical day, so shifts either side of a clock change bucketed into
+  ///    the wrong local day regardless of the sign.
+  ///
+  /// A real zone name fixes both, because Postgres then applies the offset that
+  /// was actually in force on each date.
+  static Future<String> _localTimeZoneName() async {
+    try {
+      final name = await FlutterTimezone.getLocalTimezone();
+      final identifier = name.identifier;
+      if (identifier.isNotEmpty) return identifier;
+    } catch (_) {
+      // Fall through.
+    }
+    // UTC rather than a fixed offset: bucketing a few hours out is a visible,
+    // explicable error, whereas a POSIX-parsed offset is silently backwards.
+    return 'UTC';
   }
 }
 
 /// Stable across syncs so re-importing the same day replaces its shift instead
-/// of adding a duplicate. The `manual-` prefix used for hand-entered shifts
-/// cannot collide with this.
-String importedShiftId(WorkPlatform platform, DateTime day) {
+/// of adding a duplicate. The `manual-` and `tracked-` prefixes used for
+/// hand-entered and GPS-tracked shifts cannot collide with this.
+///
+/// Takes the raw provider id rather than a [WorkPlatform]. Everything the app
+/// does not recognise maps to `WorkPlatform.other`, so keying on the enum made
+/// every unrecognised platform share one id per day — and a day with two of
+/// them lost the earnings of whichever synced first.
+String importedShiftId(String providerId, DateTime day) {
   final month = day.month.toString().padLeft(2, '0');
   final dayOfMonth = day.day.toString().padLeft(2, '0');
-  return 'imported:${platform.id}:${day.year}-$month-$dayOfMonth';
+  return 'imported:$providerId:${day.year}-$month-$dayOfMonth';
 }

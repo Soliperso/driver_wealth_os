@@ -13,9 +13,14 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION"/>
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    <!-- Android 13+ will not display the foreground-service notification
+         without this. Without the notification the driver has no persistent
+         indication that tracking is running, which is both a transparency
+         obligation and the only affordance for noticing a stalled shift. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
 
     <application
-        android:label="driver_wealth_os"
+        android:label="Driver Wealth"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

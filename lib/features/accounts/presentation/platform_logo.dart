@@ -26,6 +26,9 @@ class PlatformLogo extends StatelessWidget {
 
   Color _backgroundColor(BuildContext context) => switch (platform) {
     WorkPlatform.uber => const Color(0xFF000000),
+    // Uber Eats' own green, so it reads as a sibling brand rather than a
+    // duplicate of the rides tile in a list showing both.
+    WorkPlatform.uberEats => const Color(0xFF06C167),
     WorkPlatform.lyft => const Color(0xFFD6009A),
     WorkPlatform.doorDash => const Color(0xFFE02B0A),
     WorkPlatform.instacart => const Color(0xFF287A1F),
@@ -40,6 +43,11 @@ class PlatformLogo extends StatelessWidget {
     return switch (platform) {
       WorkPlatform.uber => Icon(
         SimpleIcons.uber,
+        color: Colors.white,
+        size: markSize,
+      ),
+      WorkPlatform.uberEats => Icon(
+        SimpleIcons.ubereats,
         color: Colors.white,
         size: markSize,
       ),

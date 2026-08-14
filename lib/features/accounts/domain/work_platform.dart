@@ -1,5 +1,8 @@
 enum WorkPlatform {
   uber('uber', 'Uber', 'Rides & delivery'),
+  // Distinct from Uber: a driver's economics on delivery and rides are not the
+  // same, and the backend reports them under separate employer names.
+  uberEats('uber_eats', 'Uber Eats', 'Delivery'),
   lyft('lyft', 'Lyft', 'Rideshare'),
   doorDash('doordash', 'DoorDash', 'Delivery'),
   instacart('instacart', 'Instacart', 'Shopping & delivery'),
@@ -16,6 +19,7 @@ enum WorkPlatform {
 
   static const connectable = [
     uber,
+    uberEats,
     lyft,
     doorDash,
     instacart,

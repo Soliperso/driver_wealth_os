@@ -4,8 +4,12 @@ import 'package:flutter/material.dart';
 
 import 'core/config/backend_config.dart';
 import 'core/persistence/app_store.dart';
+import 'core/sync/sync_service.dart';
 import 'core/theme/app_theme.dart';
 import 'features/accounts/application/earnings_repository.dart';
+import 'features/auth/application/auth_gateway.dart';
+import 'features/auth/domain/auth_user.dart';
+import 'features/auth/presentation/sign_in_screen.dart';
 import 'features/driving/application/driving_session_controller.dart';
 import 'features/driving/application/location_tracker.dart';
 import 'features/driving/domain/driving_session.dart';
@@ -22,9 +26,19 @@ class DriverWealthApp extends StatefulWidget {
     this.locationTracker,
     this.drivingRefreshInterval = const Duration(seconds: 1),
     this.clock,
+    this.authGateway,
+    this.syncService,
   });
 
+  /// Injectable so the sync rules can be tested without a backend.
+  final SyncService? syncService;
+
   final AppStore? store;
+
+  /// Null means this build has no backend, so there is nothing to sign in to
+  /// and the app runs entirely on device. Injectable so tests can drive the
+  /// signed-in and signed-out paths without a network.
+  final AuthGateway? authGateway;
 
   /// Injectable so tests can supply imported earnings without a backend.
   final EarningsRepository? earningsRepository;
@@ -58,12 +72,51 @@ class _DriverWealthAppState extends State<DriverWealthApp> {
   ThemeMode _themeMode = ThemeMode.system;
   DrivingSession? _activeSession;
   FreedomGoal? _freedomGoal;
+  Shift? _pendingDraft;
   Future<void> _pendingSave = Future.value();
+
+  AuthGateway? _auth;
+  AuthUser? _user;
+  StreamSubscription<AuthUser?>? _authChanges;
+
+  late final SyncService _sync;
+  DateTime? _syncCursor;
+  final Set<String> _dirtyShiftIds = {};
+  final Set<String> _deletedShiftIds = {};
+  var _dirtyPreferences = false;
+  var _dirtyGoal = false;
+  var _syncingRecords = false;
+
+  /// Surfaced in the UI rather than swallowed: a driver whose shifts have
+  /// silently stopped persisting must find out from the app, not from a gap in
+  /// their history weeks later.
+  String? _storageError;
 
   @override
   void initState() {
     super.initState();
     _store = widget.store ?? MemoryAppStore();
+    // Only a configured build has anything to sign in to. Without a backend
+    // the app is local-only, and demanding an account for storage that never
+    // leaves the device would be theatre.
+    _auth =
+        widget.authGateway ??
+        (BackendConfig.isConfigured ? SupabaseAuthGateway() : null);
+    _user = _auth?.currentUser;
+    _sync =
+        widget.syncService ??
+        (BackendConfig.isConfigured
+            ? SupabaseSyncService()
+            : const InertSyncService());
+    _authChanges = _auth?.changes.listen((user) {
+      if (!mounted) return;
+      final signedIn = _user == null && user != null;
+      setState(() => _user = user);
+      // Signing in is the moment a device's records acquire an owner. Anything
+      // already here was entered before there was an account to attach it to,
+      // so it is pushed rather than left stranded.
+      if (signedIn) unawaited(_syncRecords(uploadEverything: true));
+    });
     _earnings =
         widget.earningsRepository ??
         (BackendConfig.isConfigured && BackendConfig.incomeSyncEnabled
@@ -94,6 +147,7 @@ class _DriverWealthAppState extends State<DriverWealthApp> {
 
   @override
   void dispose() {
+    unawaited(_authChanges?.cancel());
     _driving?.dispose();
     super.dispose();
   }
@@ -108,6 +162,12 @@ class _DriverWealthAppState extends State<DriverWealthApp> {
       themeMode: _themeMode,
       home: !_loaded
           ? const _LoadingScreen()
+          // Sign-in comes before onboarding: the name asked for there belongs
+          // to an account, not to a device. A stored session is restored
+          // without a network round trip, so this does not block offline use
+          // once the driver has signed in.
+          : (_auth != null && _user == null)
+          ? SignInScreen(gateway: _auth!)
           : _driverName == null
           ? OnboardingScreen(onComplete: _completeOnboarding)
           : AppShell(
@@ -129,6 +189,11 @@ class _DriverWealthAppState extends State<DriverWealthApp> {
               onRefreshEarnings: refreshImportedEarnings,
               drivingController: _driving,
               drivingRefreshInterval: widget.drivingRefreshInterval,
+              pendingDraft: _pendingDraft,
+              onPendingDraftChanged: _changePendingDraft,
+              storageError: _storageError,
+              accountEmail: _user?.email,
+              onSignOut: _auth == null ? null : _signOut,
             ),
     );
   }
@@ -143,13 +208,84 @@ class _DriverWealthAppState extends State<DriverWealthApp> {
       _themeMode = snapshot.themeMode;
       _activeSession = snapshot.activeSession;
       _freedomGoal = snapshot.freedomGoal;
+      _pendingDraft = snapshot.pendingDraft;
+      _syncCursor = snapshot.syncCursor;
+      _dirtyShiftIds.addAll(snapshot.dirtyShiftIds);
+      _deletedShiftIds.addAll(snapshot.deletedShiftIds);
+      _dirtyPreferences = snapshot.dirtyPreferences;
+      _dirtyGoal = snapshot.dirtyGoal;
       _shifts
         ..clear()
         ..addAll(snapshot.shifts);
       _loaded = true;
     });
     _createDrivingController();
+    // A snapshot that predates sync has no cursor. Treat that first run as a
+    // full upload so records entered before accounts existed are not stranded.
+    await _syncRecords(uploadEverything: snapshot.syncCursor == null);
     await refreshImportedEarnings();
+  }
+
+  /// Reconciles this device's records with the driver's account.
+  ///
+  /// Never blocks the interface and never surfaces as an error the driver has
+  /// to act on: the local copy is authoritative and complete on its own, so a
+  /// failed sync means "not yet", not "something is broken".
+  ///
+  /// [uploadEverything] marks the whole device dirty. Used on first sign-in,
+  /// where nothing has sync bookkeeping yet because it was all entered before
+  /// there was an account.
+  Future<void> _syncRecords({bool uploadEverything = false}) async {
+    if (_user == null || _syncingRecords) return;
+    _syncingRecords = true;
+    try {
+      if (uploadEverything) {
+        _dirtyShiftIds.addAll(_shifts.map((shift) => shift.id));
+        _dirtyPreferences = _dirtyPreferences || _driverName != null;
+        _dirtyGoal = _dirtyGoal || _freedomGoal != null;
+      }
+
+      var snapshot = _snapshot();
+      // A device with nothing of its own is a reinstall or a new phone, so the
+      // account's name, goal and settings are pulled back down. Skipped
+      // otherwise: a stale server copy must never overwrite live local edits.
+      final sync = _sync;
+      if (sync is SupabaseSyncService && _driverName == null) {
+        snapshot = await sync.restoreInto(snapshot);
+      }
+      final merged = await sync.sync(snapshot);
+      if (!mounted) return;
+      _applySnapshot(merged);
+    } catch (_) {
+      // Deliberately quiet. Offline is the normal case for a driver, and the
+      // dirty markers survive, so the next attempt picks up where this left
+      // off. Storage failures — which do lose data — are reported separately.
+    } finally {
+      _syncingRecords = false;
+    }
+  }
+
+  /// Adopts a synced snapshot as the new local state.
+  void _applySnapshot(AppSnapshot snapshot) {
+    setState(() {
+      _driverName = snapshot.driverName;
+      _dailyGoal = snapshot.dailyGoal;
+      _vehicleCostPerMile = snapshot.vehicleCostPerMile;
+      _freedomGoal = snapshot.freedomGoal;
+      _syncCursor = snapshot.syncCursor;
+      _shifts
+        ..clear()
+        ..addAll(snapshot.shifts);
+      _dirtyShiftIds
+        ..clear()
+        ..addAll(snapshot.dirtyShiftIds);
+      _deletedShiftIds
+        ..clear()
+        ..addAll(snapshot.deletedShiftIds);
+      _dirtyPreferences = snapshot.dirtyPreferences;
+      _dirtyGoal = snapshot.dirtyGoal;
+    });
+    _save();
   }
 
   /// Pulls whatever the backend has already imported and folds it into the
@@ -166,6 +302,16 @@ class _DriverWealthAppState extends State<DriverWealthApp> {
       if (!mounted) return;
       setState(() => _syncStatus = status);
       _mergeImportedShifts(imported);
+    } catch (error) {
+      // A backend that is unreachable or rejecting the session must not take
+      // the app down with it: manual tracking works offline by design. The
+      // failure is recorded so the sync card can say so.
+      if (!mounted) return;
+      setState(
+        () => _syncStatus = SyncStatus.localFailure(
+          'Could not reach your imported earnings.',
+        ),
+      );
     } finally {
       _syncing = false;
     }
@@ -189,18 +335,76 @@ class _DriverWealthAppState extends State<DriverWealthApp> {
         );
       }
       _shifts.sort((a, b) => b.completedAt.compareTo(a.completedAt));
+      // Imported days are pushed too, so a second device sees them without
+      // having to re-derive them from the earnings feed itself.
+      _dirtyShiftIds.addAll(imported.map((shift) => shift.id));
+    });
+    _saveAndSync();
+  }
+
+  void _completeOnboarding(String name) {
+    setState(() {
+      _driverName = name.trim();
+      _dirtyPreferences = true;
+    });
+    _saveAndSync();
+  }
+
+  void _addShift(Shift shift) {
+    if (_shifts.any((savedShift) => savedShift.id == shift.id)) {
+      // Already saved — but a resumed draft still has to be cleared, or the
+      // recovery card would offer it again forever.
+      _changePendingDraft(null);
+      return;
+    }
+    setState(() {
+      _shifts.insert(0, shift);
+      // Saving is what retires the draft. Anything else leaves it recoverable.
+      _pendingDraft = null;
+      _dirtyShiftIds.add(shift.id);
+      // Re-adding an id that was deleted elsewhere is an undelete.
+      _deletedShiftIds.remove(shift.id);
+    });
+    _saveAndSync();
+  }
+
+  /// Signs out and clears this device's copy of the driver's data.
+  ///
+  /// Leaving it behind would show the next person to sign in on this phone the
+  /// previous driver's earnings. The data is not lost — it lives under the
+  /// account and comes back on the next sign-in.
+  Future<void> _signOut() async {
+    // Flush first. Signing out wipes the device, so anything not yet pushed
+    // would be destroyed rather than merely removed from here.
+    if (_user != null) await _syncRecords();
+    await _auth?.signOut();
+    // Wait for the in-flight write chain before overwriting, or a queued save
+    // of the old driver's state could land after the wipe.
+    await _pendingSave;
+    if (!mounted) return;
+    setState(() {
+      _driverName = null;
+      _shifts.clear();
+      _freedomGoal = null;
+      _pendingDraft = null;
+      _activeSession = null;
+      _syncStatus = null;
+      _dailyGoal = 250;
+      _vehicleCostPerMile = AppSnapshot.defaultVehicleCostPerMile;
+      // The next account to sign in here starts from a clean slate: a leftover
+      // cursor would make its first pull skip everything already on the server.
+      _syncCursor = null;
+      _dirtyShiftIds.clear();
+      _deletedShiftIds.clear();
+      _dirtyPreferences = false;
+      _dirtyGoal = false;
     });
     _save();
   }
 
-  void _completeOnboarding(String name) {
-    setState(() => _driverName = name.trim());
-    _save();
-  }
-
-  void _addShift(Shift shift) {
-    if (_shifts.any((savedShift) => savedShift.id == shift.id)) return;
-    setState(() => _shifts.insert(0, shift));
+  void _changePendingDraft(Shift? draft) {
+    if (_pendingDraft == null && draft == null) return;
+    setState(() => _pendingDraft = draft);
     _save();
   }
 
@@ -210,55 +414,112 @@ class _DriverWealthAppState extends State<DriverWealthApp> {
     setState(() {
       _shifts[index] = shift;
       _shifts.sort((a, b) => b.completedAt.compareTo(a.completedAt));
+      _dirtyShiftIds.add(shift.id);
     });
-    _save();
+    _saveAndSync();
   }
 
   void _deleteShift(String shiftId) {
     final removed = _shifts.where((shift) => shift.id == shiftId).isNotEmpty;
     if (!removed) return;
-    setState(() => _shifts.removeWhere((shift) => shift.id == shiftId));
-    _save();
+    setState(() {
+      _shifts.removeWhere((shift) => shift.id == shiftId);
+      // A tombstone, not just a local removal. Without it the next pull from
+      // another device would bring the shift straight back.
+      _deletedShiftIds.add(shiftId);
+      _dirtyShiftIds.remove(shiftId);
+    });
+    _saveAndSync();
   }
 
   void _changeDailyGoal(double goal) {
-    setState(() => _dailyGoal = (goal * 100).round() / 100);
-    _save();
+    setState(() {
+      _dailyGoal = (goal * 100).round() / 100;
+      _dirtyPreferences = true;
+    });
+    _saveAndSync();
   }
 
   void _changeVehicleCostPerMile(double rate) {
-    setState(() => _vehicleCostPerMile = (rate * 10000).round() / 10000);
-    _save();
+    setState(() {
+      _vehicleCostPerMile = (rate * 10000).round() / 10000;
+      _dirtyPreferences = true;
+    });
+    _saveAndSync();
   }
 
   void _changeThemeMode(ThemeMode mode) {
-    setState(() => _themeMode = mode);
-    _save();
+    setState(() {
+      _themeMode = mode;
+      _dirtyPreferences = true;
+    });
+    _saveAndSync();
   }
 
   void _changeDriverName(String name) {
     final trimmed = name.trim();
     if (trimmed.isEmpty) return;
-    setState(() => _driverName = trimmed);
-    _save();
+    setState(() {
+      _driverName = trimmed;
+      _dirtyPreferences = true;
+    });
+    _saveAndSync();
   }
 
   void _changeFreedomGoal(FreedomGoal? goal) {
-    setState(() => _freedomGoal = goal);
+    setState(() {
+      _freedomGoal = goal;
+      _dirtyGoal = true;
+    });
+    _saveAndSync();
+  }
+
+  AppSnapshot _snapshot() => AppSnapshot(
+    driverName: _driverName,
+    dailyGoal: _dailyGoal,
+    vehicleCostPerMile: _vehicleCostPerMile,
+    themeMode: _themeMode,
+    activeSession: _activeSession,
+    shifts: List.unmodifiable(_shifts),
+    freedomGoal: _freedomGoal,
+    pendingDraft: _pendingDraft,
+    syncCursor: _syncCursor,
+    dirtyShiftIds: Set.unmodifiable(_dirtyShiftIds),
+    deletedShiftIds: Set.unmodifiable(_deletedShiftIds),
+    dirtyPreferences: _dirtyPreferences,
+    dirtyGoal: _dirtyGoal,
+  );
+
+  /// Writes to the device, then reconciles with the account in the background.
+  ///
+  /// The order matters and the second half is not awaited: the local write is
+  /// what makes the change durable, and no interaction should wait on a
+  /// network the driver may not have.
+  void _saveAndSync() {
     _save();
+    unawaited(_syncRecords());
   }
 
   void _save() {
-    final snapshot = AppSnapshot(
-      driverName: _driverName,
-      dailyGoal: _dailyGoal,
-      vehicleCostPerMile: _vehicleCostPerMile,
-      themeMode: _themeMode,
-      activeSession: _activeSession,
-      shifts: List.unmodifiable(_shifts),
-      freedomGoal: _freedomGoal,
-    );
-    _pendingSave = _pendingSave.then((_) => _store.save(snapshot));
+    final snapshot = _snapshot();
+    // Saves are serialised so a burst of edits cannot interleave and write an
+    // older snapshot last. A failure is reported instead of vanishing into an
+    // unhandled future, and the chain is reset so one bad write does not
+    // poison every save that follows.
+    _pendingSave = _pendingSave
+        .then((_) => _store.save(snapshot))
+        .then((_) {
+          if (mounted && _storageError != null) {
+            setState(() => _storageError = null);
+          }
+        })
+        .catchError((Object error) {
+          if (!mounted) return;
+          setState(
+            () => _storageError =
+                'Your last change could not be saved to this device.',
+          );
+        });
   }
 }
 

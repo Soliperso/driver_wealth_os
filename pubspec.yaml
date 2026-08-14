@@ -1,5 +1,5 @@
 name: driver_wealth_os
-description: "A new Flutter project."
+description: "True-profit tracking for rideshare and delivery drivers."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -40,6 +40,8 @@ dependencies:
   shared_preferences: ^2.5.5
   intl: ^0.20.3
   geolocator: ^14.0.3
+  permission_handler: ^13.0.1
+  flutter_timezone: ^5.1.0
 dev_dependencies:
   flutter_test:
     sdk: flutter

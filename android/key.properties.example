@@ -1,0 +1,15 @@
+# Copy to android/key.properties and fill in. Never commit the real file or the
+# keystore it points at — .gitignore already excludes both.
+#
+# Generate an upload keystore with:
+#
+#   keytool -genkey -v -keystore ~/driver-wealth-upload.jks \
+#     -keyalg RSA -keysize 2048 -validity 10000 -alias upload
+#
+# Back the .jks file up somewhere you will still have it in five years. Losing
+# it means losing the ability to ship updates to the published app without
+# going through Google's key-reset process.
+storeFile=/absolute/path/to/driver-wealth-upload.jks
+storePassword=
+keyAlias=upload
+keyPassword=

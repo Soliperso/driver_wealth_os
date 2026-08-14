@@ -14,6 +14,9 @@ class SettingsScreen extends StatefulWidget {
     required this.onVehicleCostPerMileChanged,
     required this.themeMode,
     required this.onThemeModeChanged,
+    this.accountEmail,
+    this.onSignOut,
+    this.onConnectAccounts,
   });
 
   final String driverName;
@@ -24,6 +27,15 @@ class SettingsScreen extends StatefulWidget {
   final ValueChanged<double> onVehicleCostPerMileChanged;
   final ThemeMode themeMode;
   final ValueChanged<ThemeMode> onThemeModeChanged;
+
+  /// The signed-in account. Null in a local-only build, where there is no
+  /// account to show and nothing to sign out of.
+  final String? accountEmail;
+  final Future<void> Function()? onSignOut;
+
+  /// Work accounts were previously reachable only from a card on Today, which
+  /// disappears once the driver has shifts.
+  final VoidCallback? onConnectAccounts;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -203,6 +215,78 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ],
                 ),
               ),
+              if (widget.onConnectAccounts != null) ...[
+                const SizedBox(height: 16),
+                GlassSurface(
+                  padding: const EdgeInsets.all(22),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        'Work accounts',
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w800),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Import earnings automatically instead of typing them.',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: colors.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      OutlinedButton.icon(
+                        key: const ValueKey('settings-work-accounts'),
+                        onPressed: widget.onConnectAccounts,
+                        icon: const Icon(Icons.link_rounded, size: 18),
+                        label: const Text('Manage work accounts'),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              if (widget.accountEmail != null || widget.onSignOut != null) ...[
+                const SizedBox(height: 16),
+                GlassSurface(
+                  padding: const EdgeInsets.all(22),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        'Account',
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w800),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        widget.accountEmail == null
+                            ? 'Signed in.'
+                            : 'Signed in as ${widget.accountEmail}.',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: colors.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Your shifts and goals are saved to this account, so '
+                        'they survive a new phone or a reinstall.',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: colors.onSurfaceVariant,
+                        ),
+                      ),
+                      if (widget.onSignOut != null) ...[
+                        const SizedBox(height: 12),
+                        OutlinedButton.icon(
+                          key: const ValueKey('settings-sign-out'),
+                          onPressed: () => widget.onSignOut!(),
+                          icon: const Icon(Icons.logout_rounded, size: 18),
+                          label: const Text('Sign out'),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
               const SizedBox(height: 22),
               FilledButton(
                 key: const ValueKey('settings-save'),

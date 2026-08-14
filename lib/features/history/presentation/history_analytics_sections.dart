@@ -34,7 +34,9 @@ class WeeklyPerformanceSection extends StatelessWidget {
                 ),
               ),
               if (performance.netProfitChange != null)
-                _ChangeBadge(change: performance.netProfitChange!),
+                _ChangeBadge(change: performance.netProfitChange!)
+              else if (performance.netProfitDelta != null)
+                _ChangeBadge(delta: performance.netProfitDelta!),
             ],
           ),
           const SizedBox(height: 4),
@@ -206,28 +208,44 @@ class _WeeklyMetric extends StatelessWidget {
   );
 }
 
+/// Week-over-week movement.
+///
+/// Shows a percentage only when the prior week made a profit. Against a losing
+/// week there is no ratio that means anything, so the dollar difference is
+/// shown instead of a flattering fiction.
 class _ChangeBadge extends StatelessWidget {
-  const _ChangeBadge({required this.change});
+  const _ChangeBadge({this.change, this.delta})
+    : assert(
+        change != null || delta != null,
+        'A badge with nothing to report should not be built',
+      );
 
-  final double change;
+  final double? change;
+  final double? delta;
 
   @override
   Widget build(BuildContext context) {
-    final positive = change >= 0;
+    final value = change ?? delta!;
+    final positive = value >= 0;
     final color = positive
         ? Theme.of(context).colorScheme.primary
         : Theme.of(context).colorScheme.error;
+    final label = change != null
+        ? '${positive ? '+' : ''}${(change! * 100).toStringAsFixed(0)}%'
+        : Money.signed(delta!);
     return Container(
+      key: const ValueKey('weekly-change-badge'),
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
       decoration: BoxDecoration(
         color: color.withValues(alpha: .10),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Text(
-        '${positive ? '+' : ''}${(change * 100).toStringAsFixed(0)}%',
+        label,
         style: Theme.of(context).textTheme.labelMedium?.copyWith(
           color: color,
           fontWeight: FontWeight.w800,
+          fontFeatures: tabularFigures,
         ),
       ),
     );

@@ -1,0 +1,16 @@
+tags:
+  # Golden captures compare rendered pixels, which depend on the host's fonts
+  # and renderer. Useful locally for eyeballing chart changes, but they fail for
+  # reasons unrelated to the code on any machine other than the one that
+  # generated them.
+  #
+  #   flutter test --tags=visual --run-skipped
+  visual:
+    skip: "Run with --tags=visual --run-skipped"
+
+  # Generators, not tests: they write files into the repository, so they must
+  # never run as part of a normal `flutter test`.
+  #
+  #   flutter test --tags=tools --run-skipped
+  tools:
+    skip: "Run with --tags=tools --run-skipped"

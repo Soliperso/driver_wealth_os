@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io' show Platform;
 
 import 'package:geolocator/geolocator.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../domain/driver_location.dart'
     show DriverLocation, DistanceAccumulator;
@@ -45,6 +46,14 @@ abstract interface class LocationTracker {
   /// the current state, or send the driver to Settings instead. The result is
   /// whatever the platform reports afterwards, not a promise of success.
   Future<LocationPermissionState> requestAlwaysPermission();
+
+  /// Asks for the notification permission the foreground-service notification
+  /// needs on Android 13+.
+  ///
+  /// Separate from location because it is not a location grant and a refusal
+  /// is not fatal: tracking still runs, the driver just loses the persistent
+  /// indicator. Nothing should block a shift on the answer.
+  Future<void> requestNotificationPermission();
 
   Stream<DriverLocation> get locations;
 
@@ -97,6 +106,16 @@ final class GeolocatorLocationTracker implements LocationTracker {
       return _map(current);
     }
     return _map(await Geolocator.requestPermission());
+  }
+
+  @override
+  Future<void> requestNotificationPermission() async {
+    // Only Android 13+ gates the foreground-service notification behind a
+    // runtime grant. Geolocator cannot request it, and without it the
+    // notification it configures is never shown.
+    if (!Platform.isAndroid) return;
+    final status = await Permission.notification.status;
+    if (status.isDenied) await Permission.notification.request();
   }
 
   /// Opens the OS settings page for this app.

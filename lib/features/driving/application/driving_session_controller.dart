@@ -58,9 +58,17 @@ class DrivingSessionController extends ChangeNotifier {
   /// hidden, because silently under-counting miles overstates profit.
   bool _backgroundLimited = false;
 
+  /// True when the location stream has failed mid-shift.
+  ///
+  /// A dead provider produces a session that looks live and accrues no miles,
+  /// which shrinks the vehicle cost and overstates profit — the one direction
+  /// this app must never be wrong in. Cleared by the next accepted fix.
+  bool _trackingInterrupted = false;
+
   DrivingSession? get session => _session;
   bool get isDriving => _session?.isActive ?? false;
   bool get backgroundLimited => _backgroundLimited;
+  bool get trackingInterrupted => _trackingInterrupted;
   double get trackedMiles => _session?.miles ?? 0;
 
   /// Resumes a session that was already running when the app was last alive.
@@ -76,6 +84,30 @@ class DrivingSessionController extends ChangeNotifier {
         permission == LocationPermissionState.whileInUse) {
       await _listen();
     }
+    notifyListeners();
+  }
+
+  /// Re-checks the things the OS can change while the app is backgrounded.
+  ///
+  /// Permission can be revoked or downgraded in Settings mid-shift, and a
+  /// suspended app can come back with its location subscription dropped.
+  /// Neither produces a callback, so the state is re-read on resume rather
+  /// than trusted from whenever the shift happened to start.
+  Future<void> refreshAfterResume() async {
+    if (!isDriving) return;
+    final permission = await _tracker.checkPermission();
+    final usable =
+        permission == LocationPermissionState.always ||
+        permission == LocationPermissionState.whileInUse;
+    _backgroundLimited = permission == LocationPermissionState.whileInUse;
+    if (!usable) {
+      // Revoked mid-shift. The session keeps its banked miles and elapsed
+      // time, but the driver has to be told it is no longer counting.
+      _trackingInterrupted = true;
+      notifyListeners();
+      return;
+    }
+    if (_subscription == null) await _listen();
     notifyListeners();
   }
 
@@ -121,6 +153,11 @@ class DrivingSessionController extends ChangeNotifier {
         _backgroundLimited = false;
     }
 
+    // Asked only once location is granted and a shift is actually starting,
+    // so the driver sees it in the context that explains it. A refusal is not
+    // fatal, so the result is not checked.
+    await _tracker.requestNotificationPermission();
+
     final startedAt = now ?? _clock();
     _accumulator = DistanceAccumulator();
     _session = DrivingSession(
@@ -150,6 +187,7 @@ class DrivingSessionController extends ChangeNotifier {
     );
     _session = null;
     _backgroundLimited = false;
+    _trackingInterrupted = false;
     unawaited(_stopTracking());
     await _persist(null);
     notifyListeners();
@@ -160,6 +198,7 @@ class DrivingSessionController extends ChangeNotifier {
   Future<void> discard() async {
     _session = null;
     _backgroundLimited = false;
+    _trackingInterrupted = false;
     unawaited(_stopTracking());
     await _persist(null);
     notifyListeners();
@@ -176,11 +215,33 @@ class DrivingSessionController extends ChangeNotifier {
 
   Future<void> _listen() async {
     await _subscription?.cancel();
-    await _tracker.start();
-    _subscription = _tracker.locations.listen(_onLocation, onError: (_) {});
+    try {
+      await _tracker.start();
+    } catch (_) {
+      // Failing to attach is the same problem as the stream dying later: the
+      // session would sit there banking nothing.
+      _trackingInterrupted = true;
+      notifyListeners();
+      return;
+    }
+    _trackingInterrupted = false;
+    _subscription = _tracker.locations.listen(
+      _onLocation,
+      onError: (Object _) {
+        if (_session == null) return;
+        _trackingInterrupted = true;
+        notifyListeners();
+      },
+    );
   }
 
   void _onLocation(DriverLocation location) {
+    // Any fix at all proves the provider is alive, even one the accumulator
+    // rejects as drift.
+    if (_trackingInterrupted) {
+      _trackingInterrupted = false;
+      notifyListeners();
+    }
     if (!_accumulator.add(location)) return;
     final active = _session;
     if (active == null) return;

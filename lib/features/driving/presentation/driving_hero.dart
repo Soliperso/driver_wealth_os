@@ -19,6 +19,7 @@ class DrivingHero extends StatefulWidget {
     required this.session,
     required this.onEndShift,
     this.backgroundLimited = false,
+    this.trackingInterrupted = false,
     this.refreshInterval = const Duration(seconds: 1),
     this.onUpgradeBackground,
   });
@@ -29,6 +30,10 @@ class DrivingHero extends StatefulWidget {
   /// Only foreground location was granted, so mileage may stall once the
   /// driver switches to Uber.
   final bool backgroundLimited;
+
+  /// The location stream has failed or permission was revoked mid-shift, so
+  /// miles are no longer accruing at all.
+  final bool trackingInterrupted;
 
   /// Escalates to background location without leaving the shift.
   final Future<void> Function()? onUpgradeBackground;
@@ -156,7 +161,12 @@ class _DrivingHeroState extends State<DrivingHero> {
               ),
             ],
           ),
-          if (widget.backgroundLimited) ...[
+          // An outright stall outranks the foreground-only warning: if nothing
+          // is being counted, whether it would count in the background is moot.
+          if (widget.trackingInterrupted) ...[
+            Space.gapMd,
+            const _TrackingInterruptedNotice(),
+          ] else if (widget.backgroundLimited) ...[
             Space.gapMd,
             _LimitedBackgroundNotice(onUpgrade: widget.onUpgradeBackground),
           ],
@@ -207,6 +217,45 @@ class _LiveDot extends StatelessWidget {
         shape: BoxShape.circle,
         boxShadow: [
           BoxShadow(color: color.withValues(alpha: .35), blurRadius: 6),
+        ],
+      ),
+    );
+  }
+}
+
+/// Surfaced when the location stream has stopped producing fixes.
+///
+/// The failure mode this prevents is the quiet one: a session that still shows
+/// a running clock while its mileage sits frozen. Fewer miles means a smaller
+/// vehicle-cost deduction and a larger apparent profit, so a driver who is not
+/// told would be misled in the direction they would most like to believe.
+class _TrackingInterruptedNotice extends StatelessWidget {
+  const _TrackingInterruptedNotice();
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      key: const ValueKey('tracking-interrupted-notice'),
+      padding: const EdgeInsets.all(Space.md),
+      decoration: BoxDecoration(
+        color: colors.errorContainer.withValues(alpha: .75),
+        borderRadius: BorderRadius.circular(Radii.sm),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.gps_off_rounded, size: 16, color: colors.error),
+          const SizedBox(width: Space.sm),
+          Expanded(
+            child: Text(
+              'Mileage tracking stopped. Your time is still counting, but '
+              'check your location settings — miles are not being added.',
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: colors.onErrorContainer),
+            ),
+          ),
         ],
       ),
     );

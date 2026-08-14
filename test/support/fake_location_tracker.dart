@@ -22,6 +22,11 @@ class FakeLocationTracker implements LocationTracker {
   var started = false;
   var stopped = false;
   var upgradeRequested = false;
+  var notificationPermissionRequested = false;
+
+  /// When set, [start] throws instead of attaching — the platform refusing to
+  /// deliver a location stream at all.
+  Object? startError;
 
   @override
   Stream<DriverLocation> get locations => _controller.stream;
@@ -41,10 +46,21 @@ class FakeLocationTracker implements LocationTracker {
   }
 
   @override
+  Future<void> requestNotificationPermission() async {
+    notificationPermissionRequested = true;
+  }
+
+  @override
   Future<void> start() async {
+    final error = startError;
+    if (error != null) throw error;
     started = true;
     stopped = false;
   }
+
+  /// Simulates the platform stream failing mid-shift, which is what a revoked
+  /// permission or a dead provider looks like from here.
+  void emitError(Object error) => _controller.addError(error);
 
   @override
   Future<void> stop() async {

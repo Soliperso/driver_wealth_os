@@ -25,10 +25,15 @@ class TodayScreen extends StatelessWidget {
     this.onRefresh,
     this.drivingSession,
     this.drivingBackgroundLimited = false,
+    this.drivingTrackingInterrupted = false,
     this.onStartDriving,
     this.onEndShift,
     this.onUpgradeBackground,
     this.drivingRefreshInterval = const Duration(seconds: 1),
+    this.pendingDraft,
+    this.onResumeDraft,
+    this.onDiscardDraft,
+    this.storageError,
   });
 
   final String driverName;
@@ -44,12 +49,21 @@ class TodayScreen extends StatelessWidget {
   /// Non-null while a driving session is running.
   final DrivingSession? drivingSession;
   final bool drivingBackgroundLimited;
+  final bool drivingTrackingInterrupted;
   final VoidCallback? onStartDriving;
   final Future<void> Function()? onEndShift;
   final Future<void> Function()? onUpgradeBackground;
 
   /// Null freezes the live clock. See [DrivingHero.refreshInterval].
   final Duration? drivingRefreshInterval;
+
+  /// A tracked shift still waiting on its earnings.
+  final Shift? pendingDraft;
+  final VoidCallback? onResumeDraft;
+  final VoidCallback? onDiscardDraft;
+
+  /// Non-null when the last write to device storage failed.
+  final String? storageError;
 
   @override
   Widget build(BuildContext context) {
@@ -115,12 +129,27 @@ class TodayScreen extends StatelessWidget {
           onRefresh: onRefresh ?? () async {},
           child: ListView(
             children: [
+              if (storageError != null) ...[
+                _StorageErrorBanner(message: storageError!),
+                const SizedBox(height: 16),
+              ],
+              // Unfinished tracked driving outranks everything else on the
+              // screen: it is the only thing here that can still be lost.
+              if (pendingDraft != null && drivingSession == null) ...[
+                _TrackedDraftCard(
+                  draft: pendingDraft!,
+                  onResume: onResumeDraft,
+                  onDiscard: onDiscardDraft,
+                ),
+                const SizedBox(height: 16),
+              ],
               // Mid-shift the live session is what the driver opened the app
               // to see, so it takes the hero slot until the shift ends.
               if (drivingSession != null)
                 DrivingHero(
                   session: drivingSession!,
                   backgroundLimited: drivingBackgroundLimited,
+                  trackingInterrupted: drivingTrackingInterrupted,
                   onEndShift: onEndShift ?? () async {},
                   onUpgradeBackground: onUpgradeBackground,
                   refreshInterval: drivingRefreshInterval,
@@ -416,6 +445,111 @@ class _StartDrivingCard extends StatelessWidget {
             onPressed: onEnterManually,
             icon: const Icon(Icons.edit_outlined, size: 18),
             label: const Text('Enter a shift manually'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A finished session whose earnings were never entered.
+///
+/// Tracked hours and miles cannot be reconstructed once thrown away — the
+/// driving already happened. So an abandoned earnings screen leaves this behind
+/// rather than silently discarding the shift.
+class _TrackedDraftCard extends StatelessWidget {
+  const _TrackedDraftCard({
+    required this.draft,
+    required this.onResume,
+    required this.onDiscard,
+  });
+
+  final Shift draft;
+  final VoidCallback? onResume;
+  final VoidCallback? onDiscard;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return GlassSurface(
+      key: const ValueKey('pending-draft-card'),
+      padding: const EdgeInsets.all(Space.xl),
+      tint: colors.tertiaryContainer.withValues(alpha: .82),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              const SoftIcon(Icons.pending_actions_rounded),
+              const SizedBox(width: Space.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Shift waiting on earnings',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: Space.xs),
+                    Text(
+                      '${Money.hours(draft.hours)} and '
+                      '${Money.number(draft.miles)} miles tracked on '
+                      '${draft.platform.displayName}. Add what you earned to '
+                      'see the profit.',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: colors.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          Space.gapLg,
+          FilledButton(
+            key: const ValueKey('resume-draft-button'),
+            onPressed: onResume,
+            child: const Text('ENTER EARNINGS'),
+          ),
+          const SizedBox(height: Space.xs),
+          TextButton(
+            key: const ValueKey('discard-draft-button'),
+            onPressed: onDiscard,
+            child: const Text('Discard this shift'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Shown when the device refused a write. Silence here would mean a driver
+/// keeps logging shifts that are never actually saved.
+class _StorageErrorBanner extends StatelessWidget {
+  const _StorageErrorBanner({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return GlassSurface(
+      key: const ValueKey('storage-error-banner'),
+      padding: const EdgeInsets.all(Space.lg),
+      tint: colors.errorContainer.withValues(alpha: .82),
+      child: Row(
+        children: [
+          Icon(Icons.warning_amber_rounded, color: colors.error),
+          const SizedBox(width: Space.md),
+          Expanded(
+            child: Text(
+              message,
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: colors.onErrorContainer),
+            ),
           ),
         ],
       ),

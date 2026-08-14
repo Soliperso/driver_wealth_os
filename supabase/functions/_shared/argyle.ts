@@ -81,13 +81,35 @@ export async function argyleRequest<T>(
   return await response.json() as T;
 }
 
-export async function listAllGigs(argyleUserId: string): Promise<ArgyleGig[]> {
+/// A malformed or self-referential `next` cursor would otherwise spin here
+/// until the function is killed by the platform, having done nothing. 200 pages
+/// at 200 rows is 40,000 gigs — years of full-time driving.
+const MAX_GIG_PAGES = 200;
+
+export async function listAllGigs(
+  argyleUserId: string,
+  options: { updatedAfter?: string } = {},
+): Promise<ArgyleGig[]> {
   const gigs: ArgyleGig[] = [];
-  let next: string | null = `/gigs?user=${encodeURIComponent(argyleUserId)}&limit=200`;
-  while (next) {
-    const page: ArgylePage<ArgyleGig> = await argyleRequest(next);
-    gigs.push(...(page.results ?? []));
-    next = page.next ?? null;
+  const params = new URLSearchParams({
+    user: argyleUserId,
+    limit: "200",
+  });
+  // An incremental window turns a single-trip webhook into a small request
+  // instead of a full re-download of the driver's entire history.
+  if (options.updatedAfter) params.set("updated_at__gte", options.updatedAfter);
+
+  let next: string | null = `/gigs?${params.toString()}`;
+  const seen = new Set<string>();
+  for (let page = 0; page < MAX_GIG_PAGES; page++) {
+    const url: string | null = next;
+    if (url === null) break;
+    // A cursor that points back at a page already fetched is a loop.
+    if (seen.has(url)) break;
+    seen.add(url);
+    const body: ArgylePage<ArgyleGig> = await argyleRequest(url);
+    gigs.push(...(body.results ?? []));
+    next = body.next ?? null;
   }
   return gigs;
 }

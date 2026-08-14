@@ -1,15 +1,17 @@
 // Development-only entrypoint used to eyeball the charts with realistic data.
 //
-//   flutter run -t lib/preview_charts.dart -d macos
+//   flutter run -t tool/preview_charts.dart -d macos
 //
-// Not referenced by the shipping app; `lib/main.dart` remains the entrypoint.
+// Lives outside `lib/` because it is the only place in the repo that fabricates
+// shift data, and nothing that ships should be able to import it by accident.
+// `lib/main.dart` remains the app's entrypoint.
 import 'package:flutter/material.dart';
 
-import 'core/theme/app_theme.dart';
-import 'features/accounts/domain/work_platform.dart';
-import 'features/freedom/domain/freedom_goal.dart';
-import 'features/shifts/domain/shift.dart';
-import 'features/today/presentation/app_shell.dart';
+import 'package:driver_wealth_os/core/theme/app_theme.dart';
+import 'package:driver_wealth_os/features/accounts/domain/work_platform.dart';
+import 'package:driver_wealth_os/features/freedom/domain/freedom_goal.dart';
+import 'package:driver_wealth_os/features/shifts/domain/shift.dart';
+import 'package:driver_wealth_os/features/today/presentation/app_shell.dart';
 
 void main() => runApp(const _PreviewApp());
 

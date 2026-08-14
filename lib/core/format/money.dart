@@ -44,6 +44,16 @@ abstract final class Money {
   static String number(double value, {int decimals = 1}) =>
       value.toStringAsFixed(decimals);
 
+  /// `5h 15m`. Decimal hours are how the app calculates but not how a driver
+  /// thinks about the time they just spent.
+  static String hours(double value) {
+    final whole = value.floor();
+    final minutes = ((value - whole) * 60).round();
+    // 59.7 minutes rounds to 60, which would read as "5h 60m".
+    if (minutes == 60) return '${whole + 1}h 00m';
+    return '${whole}h ${minutes.toString().padLeft(2, '0')}m';
+  }
+
   static String compactNumber(double value) => _plain.format(value);
 }
 

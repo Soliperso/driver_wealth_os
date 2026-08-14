@@ -90,6 +90,89 @@ void main() {
       leaks.fold<double>(0, (sum, leak) => sum + leak.potentialRecovery),
     );
   });
+
+  test('a losing prior week reports dollars, not a flattering percentage', () {
+    // Last week lost $100, this week made $50. Dividing by the absolute value
+    // of the loss would render "+150%", which reads like a blowout week.
+    final previous = _shift(
+      id: 'previous',
+      date: DateTime(2026, 8, 3, 9),
+      gross: 0,
+      hours: 5,
+      directExpenses: 100,
+      miles: 0,
+      vehicleRate: 0,
+    );
+    final current = _shift(
+      id: 'current',
+      date: DateTime(2026, 8, 10, 9),
+      gross: 50,
+      hours: 5,
+      directExpenses: 0,
+      miles: 0,
+      vehicleRate: 0,
+    );
+
+    final result = ShiftAnalytics.weekly([
+      previous,
+      current,
+    ], now: DateTime(2026, 8, 12));
+
+    expect(result.previousSummary.netProfit, -100);
+    expect(result.summary.netProfit, 50);
+    // No ratio is honest against a loss, so none is offered.
+    expect(result.netProfitChange, isNull);
+    expect(result.netProfitDelta, 150);
+  });
+
+  test('a break-even prior week still reports a dollar change', () {
+    final previous = _shift(
+      id: 'previous',
+      date: DateTime(2026, 8, 3, 9),
+      gross: 100,
+      hours: 5,
+      directExpenses: 100,
+      miles: 0,
+      vehicleRate: 0,
+    );
+    final current = _shift(
+      id: 'current',
+      date: DateTime(2026, 8, 10, 9),
+      gross: 80,
+      hours: 5,
+      directExpenses: 0,
+      miles: 0,
+      vehicleRate: 0,
+    );
+
+    final result = ShiftAnalytics.weekly([
+      previous,
+      current,
+    ], now: DateTime(2026, 8, 12));
+
+    // Dividing by zero would have produced infinity.
+    expect(result.previousSummary.netProfit, 0);
+    expect(result.netProfitChange, isNull);
+    expect(result.netProfitDelta, 80);
+  });
+
+  test('no prior week means nothing to compare against', () {
+    final current = _shift(
+      id: 'current',
+      date: DateTime(2026, 8, 10, 9),
+      gross: 80,
+      hours: 5,
+      directExpenses: 0,
+      miles: 0,
+      vehicleRate: 0,
+    );
+
+    final result = ShiftAnalytics.weekly([current], now: DateTime(2026, 8, 12));
+
+    expect(result.netProfitChange, isNull);
+    // A first week is not an $80 improvement on anything.
+    expect(result.netProfitDelta, isNull);
+  });
 }
 
 Shift _profitShift(String id, DateTime date, double profitPerHour) => _shift(

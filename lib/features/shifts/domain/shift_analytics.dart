@@ -30,15 +30,24 @@ class ShiftAnalytics {
     final previousSummary = ShiftSummary.from(previousShifts);
     final ranked = currentShifts.where((shift) => shift.hours > 0).toList()
       ..sort((a, b) => b.netPerHour.compareTo(a.netPerHour));
-    final change = previousSummary.netProfit == 0
+    // A percentage is only meaningful against a profitable baseline. Dividing
+    // by the absolute value of a loss reports recovering from −$100 to +$50 as
+    // "+150%", which reads like a strong week rather than a small one. When
+    // last week lost money there is no honest ratio, so the badge falls back
+    // to the dollar difference.
+    final change = previousSummary.netProfit > 0
+        ? (summary.netProfit - previousSummary.netProfit) /
+              previousSummary.netProfit
+        : null;
+    final delta = previousShifts.isEmpty
         ? null
-        : (summary.netProfit - previousSummary.netProfit) /
-              previousSummary.netProfit.abs();
+        : _currency(summary.netProfit - previousSummary.netProfit);
     return WeeklyPerformance(
       weekStart: weekStart,
       summary: summary,
       previousSummary: previousSummary,
       netProfitChange: change,
+      netProfitDelta: delta,
       bestShift: ranked.isEmpty ? null : ranked.first,
       weakestShift: ranked.isEmpty ? null : ranked.last,
       dailyNetProfit: _dailyNetProfit(currentShifts, weekStart),
@@ -184,6 +193,7 @@ class WeeklyPerformance {
     required this.netProfitChange,
     required this.bestShift,
     required this.weakestShift,
+    this.netProfitDelta,
     this.dailyNetProfit = const [0, 0, 0, 0, 0, 0, 0],
     this.previousDailyNetProfit = const [0, 0, 0, 0, 0, 0, 0],
   });
@@ -191,7 +201,14 @@ class WeeklyPerformance {
   final DateTime weekStart;
   final ShiftSummary summary;
   final ShiftSummary previousSummary;
+  /// Week-over-week change as a ratio. Null unless the prior week turned a
+  /// profit, because a percentage against zero or a loss says nothing.
   final double? netProfitChange;
+
+  /// Week-over-week change in dollars. Null only when there was no prior week
+  /// to compare against. Always meaningful, unlike [netProfitChange].
+  final double? netProfitDelta;
+
   final Shift? bestShift;
   final Shift? weakestShift;
 

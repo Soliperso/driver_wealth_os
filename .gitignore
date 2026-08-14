@@ -48,3 +48,10 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Release signing. The keystore and its passwords must never be committed;
+# anyone holding both can publish an update as this app.
+/android/key.properties
+!/android/key.properties.example
+*.jks
+*.keystore

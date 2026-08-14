@@ -38,14 +38,19 @@ class BrandMark extends StatelessWidget {
                   ]
                 : null,
           ),
-          child: CustomPaint(painter: _BrandMarkPainter()),
+          child: CustomPaint(painter: BrandGlyphPainter()),
         ),
       ),
     );
   }
 }
 
-class _BrandMarkPainter extends CustomPainter {
+/// The glyph itself, without the tile behind it.
+///
+/// Public so the launcher-icon generator paints the same marks the app shows.
+/// A separately drawn icon asset would drift from this the first time either
+/// changed.
+class BrandGlyphPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final line = Paint()
