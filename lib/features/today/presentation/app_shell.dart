@@ -7,6 +7,8 @@ import '../../../core/config/backend_config.dart';
 import '../../../core/format/money.dart';
 import '../../../core/widgets/brand_mark.dart';
 import '../../../core/widgets/soft_surfaces.dart';
+import '../../admin/application/admin_repository.dart';
+import '../../admin/presentation/admin_dashboard_screen.dart';
 import '../../accounts/application/earnings_connection_gateway.dart';
 import '../../accounts/application/earnings_repository.dart';
 import '../../accounts/domain/work_platform.dart';
@@ -15,6 +17,7 @@ import '../../accounts/presentation/work_accounts_screen.dart';
 import '../../coach/presentation/coach_screen.dart';
 import '../../driving/application/driving_session_controller.dart';
 import '../../driving/application/location_tracker.dart';
+import '../../driving/domain/driving_session.dart';
 import '../../driving/presentation/location_disclosure_sheet.dart';
 import '../../freedom/domain/freedom_goal.dart';
 import '../../freedom/presentation/freedom_screen.dart';
@@ -51,6 +54,7 @@ class AppShell extends StatefulWidget {
     this.storageError,
     this.accountEmail,
     this.onSignOut,
+    this.adminRepository,
   });
   final String driverName;
   final List<Shift> shifts;
@@ -84,54 +88,168 @@ class AppShell extends StatefulWidget {
   final String? accountEmail;
   final Future<void> Function()? onSignOut;
 
+  /// Non-null only after the backend confirms this account owns the platform.
+  final AdminRepository? adminRepository;
+
   @override
   State<AppShell> createState() => _AppShellState();
 }
 
-/// Asked once at the start of a session so the tracked shift knows which
-/// platform it belongs to, rather than making the driver recall it hours later.
-class _PlatformPickerSheet extends StatelessWidget {
-  const _PlatformPickerSheet();
+/// Asked at the start of a session, and again whenever the driver switches
+/// another app on mid-shift, so the tracked shift knows what it was running
+/// rather than making the driver recall it hours later.
+///
+/// Two ways out on purpose. Tapping a row picks that app and closes — the one
+/// tap most shifts need. The trailing `+` instead adds it to a running
+/// selection and keeps the sheet open, which is how a driver says "Uber *and*
+/// Lyft" without the common case paying for the rare one.
+class _PlatformPickerSheet extends StatefulWidget {
+  const _PlatformPickerSheet({
+    required this.title,
+    required this.subtitle,
+    this.already = const {},
+  });
+
+  final String title;
+  final String subtitle;
+
+  /// Apps already running. Shown ticked and inert rather than hidden, so the
+  /// sheet reads as the whole picture of what is on.
+  final Set<WorkPlatform> already;
 
   @override
-  Widget build(BuildContext context) => SafeArea(
-    child: Padding(
-      padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            'Which platform?',
-            style: Theme.of(context).textTheme.titleLarge,
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'You can change this when you enter your earnings.',
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
-          const SizedBox(height: 16),
-          // The full platform list is taller than a sheet on a small phone,
-          // so it scrolls rather than overflowing.
-          Flexible(
-            child: ListView(
-              shrinkWrap: true,
-              children: [
-                for (final platform in WorkPlatform.values)
-                  ListTile(
-                    key: ValueKey('start-platform-${platform.id}'),
-                    contentPadding: EdgeInsets.zero,
-                    leading: PlatformLogo(platform: platform, size: 38),
-                    title: Text(platform.displayName),
-                    onTap: () => Navigator.of(context).pop(platform),
+  State<_PlatformPickerSheet> createState() => _PlatformPickerSheetState();
+}
+
+class _PlatformPickerSheetState extends State<_PlatformPickerSheet> {
+  /// Insertion-ordered, because the order the driver picks them in is the
+  /// order their earnings rows appear in afterwards.
+  final _selected = <WorkPlatform>{};
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return SafeArea(
+      child: ConstrainedBox(
+        // Tall enough that picking one app leaves the rest reachable, short
+        // enough that the sheet still reads as a sheet.
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(context).height * .8,
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(widget.title, style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: 6),
+              Text(
+                widget.subtitle,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              const SizedBox(height: 16),
+              // The full platform list is taller than a sheet on a small phone,
+              // so it scrolls rather than overflowing.
+              Flexible(
+                child: ListView(
+                  shrinkWrap: true,
+                  children: [
+                    for (final platform in WorkPlatform.values)
+                      _PlatformPickerRow(
+                        platform: platform,
+                        selected: _selected.contains(platform),
+                        running: widget.already.contains(platform),
+                        onPick: () =>
+                            Navigator.of(context).pop(<WorkPlatform>{platform}),
+                        onToggle: () => setState(() {
+                          if (!_selected.remove(platform)) {
+                            _selected.add(platform);
+                          }
+                        }),
+                      ),
+                  ],
+                ),
+              ),
+              // Appears only once the driver has started building a combination.
+              // Until then the sheet is exactly what it was before.
+              if (_selected.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                FilledButton(
+                  key: const ValueKey('start-selected-platforms'),
+                  onPressed: () => Navigator.of(
+                    context,
+                  ).pop(Set<WorkPlatform>.of(_selected)),
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(52),
                   ),
+                  child: Text(
+                    _selected
+                        .map((platform) => platform.displayName)
+                        .join(' + '),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Both apps share one shift — your hours and miles are only '
+                  'counted once.',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: colors.onSurfaceVariant,
+                  ),
+                ),
               ],
-            ),
+            ],
           ),
-        ],
+        ),
       ),
-    ),
-  );
+    );
+  }
+}
+
+class _PlatformPickerRow extends StatelessWidget {
+  const _PlatformPickerRow({
+    required this.platform,
+    required this.selected,
+    required this.running,
+    required this.onPick,
+    required this.onToggle,
+  });
+
+  final WorkPlatform platform;
+  final bool selected;
+  final bool running;
+  final VoidCallback onPick;
+  final VoidCallback onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return ListTile(
+      key: ValueKey('start-platform-${platform.id}'),
+      contentPadding: EdgeInsets.zero,
+      enabled: !running,
+      leading: PlatformLogo(platform: platform, size: 38),
+      title: Text(platform.displayName),
+      subtitle: running ? const Text('Already running') : null,
+      onTap: running ? null : onPick,
+      trailing: running
+          ? Icon(Icons.check_circle_rounded, color: colors.primary)
+          : IconButton(
+              key: ValueKey('add-platform-${platform.id}'),
+              onPressed: onToggle,
+              tooltip: selected
+                  ? 'Remove ${platform.displayName}'
+                  : 'Also run ${platform.displayName}',
+              icon: Icon(
+                selected
+                    ? Icons.check_circle_rounded
+                    : Icons.add_circle_outline_rounded,
+                color: selected ? colors.primary : colors.onSurfaceVariant,
+              ),
+            ),
+    );
+  }
 }
 
 class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
@@ -208,7 +326,6 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         shifts: widget.shifts,
         dailyGoal: widget.dailyGoal,
         onAddShift: () => _addShift(returnToToday: true),
-        onConnectAccounts: _connectAccounts,
         onDailyGoalChanged: widget.onDailyGoalChanged,
         onOpenShift: _openShift,
         onOpenSettings: () => setState(() => _index = 4),
@@ -220,9 +337,20 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
             widget.drivingController?.trackingInterrupted ?? false,
         onStartDriving: widget.drivingController == null ? null : _startDriving,
         onEndShift: widget.drivingController == null ? null : _endShift,
+        onPauseDriving: widget.drivingController == null ? null : _pauseDriving,
+        onResumeDriving: widget.drivingController == null
+            ? null
+            : _resumeDriving,
+        onAutoEndShift: widget.drivingController == null ? null : _autoEndShift,
         onUpgradeBackground: widget.drivingController == null
             ? null
             : _upgradeBackground,
+        onAddDrivingPlatform: widget.drivingController == null
+            ? null
+            : _addDrivingPlatform,
+        onRemoveDrivingPlatform: widget.drivingController == null
+            ? null
+            : _removeDrivingPlatform,
         drivingRefreshInterval: widget.drivingRefreshInterval,
         pendingDraft: widget.pendingDraft,
         onResumeDraft: widget.pendingDraft == null
@@ -261,6 +389,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         accountEmail: widget.accountEmail,
         onSignOut: widget.onSignOut == null ? null : _confirmSignOut,
         onConnectAccounts: _connectAccounts,
+        onOpenAdmin: widget.adminRepository == null ? null : _openAdmin,
       ),
     };
     if (!wide) {
@@ -345,17 +474,70 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     );
   }
 
+  void _openAdmin() {
+    final repository = widget.adminRepository;
+    if (repository == null) return;
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => AdminDashboardScreen(repository: repository),
+      ),
+    );
+  }
+
+  /// Switches another app on mid-shift, from the live session card.
+  ///
+  /// Same sheet as the start flow, with what is already running shown ticked
+  /// and inert. Nothing about the clock, the mileage or a break is touched.
+  Future<void> _addDrivingPlatform() async {
+    final controller = widget.drivingController;
+    final session = controller?.session;
+    if (controller == null || session == null) return;
+
+    final picked = await showModalBottomSheet<Set<WorkPlatform>>(
+      context: context,
+      showDragHandle: true,
+      // Otherwise the sheet is capped at half the screen, and the confirm
+      // button appearing shrinks the list enough to push apps out of view at
+      // the moment the driver is trying to pick a second one.
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      builder: (_) => _PlatformPickerSheet(
+        title: 'Add another app',
+        subtitle:
+            'Your hours and miles keep counting once — only the earnings are '
+            'recorded per app.',
+        already: session.livePlatforms.toSet(),
+      ),
+    );
+    if (picked == null || !mounted) return;
+    for (final platform in picked) {
+      await controller.addPlatform(platform);
+    }
+  }
+
+  Future<void> _removeDrivingPlatform(WorkPlatform platform) async {
+    await widget.drivingController?.removePlatform(platform);
+  }
+
   Future<void> _startDriving() async {
     final controller = widget.drivingController;
     if (controller == null) return;
 
-    final platform = await showModalBottomSheet<WorkPlatform>(
+    final platforms = await showModalBottomSheet<Set<WorkPlatform>>(
       context: context,
       showDragHandle: true,
+      // See the note in [_addDrivingPlatform]: the default half-screen cap
+      // loses rows exactly when a second app is being picked.
+      isScrollControlled: true,
       backgroundColor: Theme.of(context).colorScheme.surface,
-      builder: (_) => const _PlatformPickerSheet(),
+      builder: (_) => const _PlatformPickerSheet(
+        title: 'Which apps are you running?',
+        subtitle:
+            'Pick one, or add more if you are running several at once. You '
+            'can change this any time during the shift.',
+      ),
     );
-    if (platform == null || !mounted) return;
+    if (platforms == null || platforms.isEmpty || !mounted) return;
 
     // Explain before the OS asks. Play policy requires a prominent disclosure
     // ahead of a background-location request, and a driver deserves to know
@@ -368,7 +550,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     }
 
     final result = await controller.start(
-      platform: platform,
+      platforms: platforms,
       vehicleCostPerMile: widget.vehicleCostPerMile,
     );
     if (!mounted) return;
@@ -430,6 +612,40 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
           onPressed: GeolocatorLocationTracker.openSettings,
         ),
       ),
+    );
+  }
+
+  /// Breaks are taken and ended without ceremony — no sheet, no confirmation.
+  /// Both are trivially reversible, and a driver pulling over for ten minutes
+  /// should not have to read a dialog first.
+  Future<void> _pauseDriving() async => widget.drivingController?.pause();
+
+  Future<void> _resumeDriving() async => widget.drivingController?.resume();
+
+  /// A break that ran past the limit while the app was open.
+  ///
+  /// Unlike [_endShift] this does not open the earnings screen: it fires on a
+  /// timer, with nobody necessarily looking, and throwing a form in front of
+  /// whatever the driver was doing would be worse than letting them come back
+  /// to it. The controller has already banked the draft, so the recovery card
+  /// on Today is waiting for them.
+  void _autoEndShift() {
+    final controller = widget.drivingController;
+    if (controller == null) return;
+    unawaited(
+      controller.endIfPauseExpired().then((draft) {
+        if (draft == null || !mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Shift ended automatically after '
+              '${pauseAutoEndAfter.inHours} hours paused. Add your earnings '
+              'when you are ready.',
+            ),
+            duration: const Duration(seconds: 6),
+          ),
+        );
+      }),
     );
   }
 

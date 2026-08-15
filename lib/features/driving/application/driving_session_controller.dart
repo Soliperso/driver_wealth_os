@@ -28,10 +28,12 @@ class DrivingSessionController extends ChangeNotifier {
     required Future<void> Function(DrivingSession? session) persist,
     DrivingSession? restored,
     DateTime Function()? clock,
+    void Function(Shift draft)? onAutoEnded,
   }) {
     _tracker = tracker;
     _persist = persist;
     _clock = clock ?? DateTime.now;
+    _onAutoEnded = onAutoEnded;
     _session = restored;
     if (restored != null) {
       // Carry the already-banked mileage forward so a resumed session keeps
@@ -44,6 +46,13 @@ class DrivingSessionController extends ChangeNotifier {
 
   late final LocationTracker _tracker;
   late final Future<void> Function(DrivingSession? session) _persist;
+
+  /// Where a self-ended shift goes.
+  ///
+  /// [endIfPauseExpired] can fire during start-up, long before any screen is
+  /// watching, so the draft is banked here rather than left for a caller that
+  /// may not exist. Losing it would mean losing a whole shift's hours.
+  late final void Function(Shift draft)? _onAutoEnded;
 
   /// Wall clock, injectable because elapsed time is the whole point of a
   /// session and `DateTime.now()` cannot be advanced from a widget test.
@@ -67,6 +76,10 @@ class DrivingSessionController extends ChangeNotifier {
 
   DrivingSession? get session => _session;
   bool get isDriving => _session?.isActive ?? false;
+
+  /// A paused session is still active — it is on a break, not finished — so
+  /// this is deliberately not folded into [isDriving].
+  bool get isPaused => _session?.isPaused ?? false;
   bool get backgroundLimited => _backgroundLimited;
   bool get trackingInterrupted => _trackingInterrupted;
   double get trackedMiles => _session?.miles ?? 0;
@@ -78,6 +91,15 @@ class DrivingSessionController extends ChangeNotifier {
   Future<void> resumeIfActive() async {
     final restored = _session;
     if (restored == null || !restored.isActive) return;
+    // A break that outlived the app is the case this guards: the session is
+    // closed out at its limit rather than silently resumed hours later.
+    if (await endIfPauseExpired() != null) return;
+    // Still on a break, so nothing should start counting until the driver
+    // says so.
+    if (isPaused) {
+      notifyListeners();
+      return;
+    }
     final permission = await _tracker.checkPermission();
     _backgroundLimited = permission == LocationPermissionState.whileInUse;
     if (permission == LocationPermissionState.always ||
@@ -95,6 +117,13 @@ class DrivingSessionController extends ChangeNotifier {
   /// than trusted from whenever the shift happened to start.
   Future<void> refreshAfterResume() async {
     if (!isDriving) return;
+    // The common way a pause overruns: paused, app closed, reopened much
+    // later. Checked before anything else, because a session past the limit
+    // should not be having its permissions refreshed at all.
+    if (await endIfPauseExpired() != null) return;
+    // Tracking is meant to be off during a break, so there is nothing to
+    // re-check and nothing to reattach.
+    if (isPaused) return;
     final permission = await _tracker.checkPermission();
     final usable =
         permission == LocationPermissionState.always ||
@@ -132,11 +161,14 @@ class DrivingSessionController extends ChangeNotifier {
     return granted;
   }
 
+  /// Starts a session running [platforms], which is more than one whenever the
+  /// driver is multi-apping.
   Future<StartResult> start({
-    required WorkPlatform platform,
+    required Set<WorkPlatform> platforms,
     required double vehicleCostPerMile,
     DateTime? now,
   }) async {
+    assert(platforms.isNotEmpty, 'A shift must start on at least one app');
     if (isDriving) return const StartResult.started();
 
     final permission = await _tracker.requestPermission();
@@ -163,13 +195,113 @@ class DrivingSessionController extends ChangeNotifier {
     _session = DrivingSession(
       id: 'session-${startedAt.microsecondsSinceEpoch}',
       startedAt: startedAt,
-      platform: platform,
+      platformSpans: [
+        for (final platform in platforms)
+          PlatformSpan(platform: platform, from: startedAt),
+      ],
       vehicleCostPerMile: vehicleCostPerMile,
     );
     await _persist(_session);
     await _listen();
     notifyListeners();
     return const StartResult.started();
+  }
+
+  /// Switches another app on without interrupting the shift.
+  ///
+  /// Deliberately touches nothing but the spans. Time, mileage and the break
+  /// bookkeeping are properties of the car, not of which apps are open, so
+  /// turning Lyft on halfway through an Uber shift must not disturb any of
+  /// them. Returns false when nothing changed.
+  Future<bool> addPlatform(WorkPlatform platform, {DateTime? now}) async {
+    final active = _session;
+    if (active == null || !active.isActive) return false;
+    final next = active.addingPlatform(platform, at: now ?? _clock());
+    if (identical(next, active)) return false;
+    _session = next;
+    await _persist(_session);
+    notifyListeners();
+    return true;
+  }
+
+  /// Switches an app off, leaving the shift running on whatever else is live.
+  ///
+  /// Refused when it would leave the session running nothing — see
+  /// [DrivingSession.removingPlatform]. Returns false in that case, so the UI
+  /// can leave the last chip looking un-removable rather than silently doing
+  /// nothing.
+  Future<bool> removePlatform(WorkPlatform platform, {DateTime? now}) async {
+    final active = _session;
+    if (active == null || !active.isActive) return false;
+    final next = active.removingPlatform(platform, at: now ?? _clock());
+    if (identical(next, active)) return false;
+    _session = next;
+    await _persist(_session);
+    notifyListeners();
+    return true;
+  }
+
+  /// Starts a break: the clock stops counting and location tracking detaches.
+  ///
+  /// Both stop together on purpose. Leaving GPS running through a lunch break
+  /// would drain the battery for nothing, and stopping the clock while still
+  /// banking miles would produce a shift whose cost per hour is nonsense.
+  Future<void> pause({DateTime? now}) async {
+    final active = _session;
+    if (active == null || !active.isActive || active.isPaused) return;
+
+    _session = active.copyWith(pausedAt: now ?? _clock());
+    // Neither warning means anything while tracking is off by choice, and a
+    // red "mileage stopped" alarm for a break the driver asked for would
+    // teach them to ignore it when it matters.
+    _backgroundLimited = false;
+    _trackingInterrupted = false;
+    await _persist(_session);
+    // The break is on screen before the platform teardown is waited on, so
+    // tapping pause feels immediate. The teardown is still part of this
+    // future, unlike the fire-and-forget one in [end] — a caller that wants to
+    // know location collection has actually stopped can await it.
+    notifyListeners();
+    await _stopTracking();
+  }
+
+  /// Ends the break and starts counting again.
+  Future<void> resume({DateTime? now}) async {
+    final active = _session;
+    final pausedAt = active?.pausedAt;
+    if (active == null || !active.isActive || pausedAt == null) return;
+
+    final taken = (now ?? _clock()).difference(pausedAt).inMilliseconds;
+    _session = active.copyWith(
+      clearPausedAt: true,
+      pausedMillis: active.pausedMillis + (taken < 0 ? 0 : taken),
+    );
+    // The driver may be somewhere else entirely by now. Without this the
+    // first fix would be measured from where the break started.
+    _accumulator.reanchor();
+    await _persist(_session);
+    // Reattaching can fail or find permission revoked during the break;
+    // _listen already reports both.
+    await _listen();
+    notifyListeners();
+  }
+
+  /// Ends a session that has sat paused past [pauseAutoEndAfter].
+  ///
+  /// Returns the draft shift when it fired, null otherwise. Idempotent, so it
+  /// is safe to call from a display ticker.
+  ///
+  /// The shift is cut off at the moment the limit was reached rather than at
+  /// whenever the app noticed, so reopening the app days later still produces
+  /// the same figures.
+  Future<Shift?> endIfPauseExpired({DateTime? now}) async {
+    final active = _session;
+    final pausedAt = active?.pausedAt;
+    if (active == null || !active.isActive || pausedAt == null) return null;
+    if ((now ?? _clock()).difference(pausedAt) < pauseAutoEndAfter) return null;
+    final draft = await end(now: pausedAt.add(pauseAutoEndAfter));
+    if (draft != null) _onAutoEnded?.call(draft);
+    return draft;
   }
 
   /// Ends the session and hands back the shift the earnings then attach to.
@@ -181,10 +313,11 @@ class DrivingSessionController extends ChangeNotifier {
     // background. Awaiting teardown here would make finishing a shift wait on
     // platform stream cleanup that nothing downstream depends on.
     final endedAt = now ?? _clock();
-    final finished = active.copyWith(
-      endedAt: endedAt,
-      distanceMeters: _accumulator.meters,
-    );
+    final finished = active
+        .copyWith(endedAt: endedAt, distanceMeters: _accumulator.meters)
+        // Ending the shift switches every app off, so no span is left claiming
+        // it is still running after the session is over.
+        .closingSpans(at: endedAt);
     _session = null;
     _backgroundLimited = false;
     _trackingInterrupted = false;

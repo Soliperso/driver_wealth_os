@@ -93,11 +93,9 @@ final class SupabaseSyncService implements SyncService {
       // single multi-megabyte request that PostgREST rejects on body size.
       for (var start = 0; start < dirty.length; start += _pageSize) {
         final chunk = dirty.skip(start).take(_pageSize);
-        await _client
-            .from('shifts')
-            .upsert([
-              for (final shift in chunk) _toRow(shift, userId),
-            ], onConflict: 'user_id,id');
+        await _client.from('shifts').upsert([
+          for (final shift in chunk) _toRow(shift, userId),
+        ], onConflict: 'user_id,id');
       }
     }
 
@@ -170,14 +168,21 @@ final class SupabaseSyncService implements SyncService {
   static Map<String, Object?> _toRow(Shift shift, String userId) => {
     'user_id': userId,
     'id': shift.id,
+    // The dominant app and the shift's whole gross. Both columns predate
+    // multi-apping and are still written so a device on an older build reads a
+    // lossy but honest version of the shift rather than nothing at all.
     'platform': shift.platform.id,
     'gross': shift.gross,
+    'earnings': Shift.earningsToJson(shift.earnings),
     'hours': shift.hours,
     'miles': shift.miles,
     'direct_expenses': shift.directExpenses,
     'vehicle_cost_per_mile': shift.vehicleCostPerMile,
     'completed_at': shift.completedAt.toUtc().toIso8601String(),
     'source': shift.source.id,
+    // Without this the flag resets to true on the next pull, quietly marking an
+    // imported shift as cost-reviewed when the driver has not touched it.
+    'costs_reviewed': shift.costsReviewed,
     // Explicitly cleared: re-saving a shift that was deleted elsewhere is an
     // undelete, not a no-op.
     'deleted_at': null,
@@ -189,19 +194,32 @@ final class SupabaseSyncService implements SyncService {
     final id = row['id'];
     final completedAt = DateTime.tryParse(row['completed_at'] as String? ?? '');
     if (id is! String || id.isEmpty || completedAt == null) return null;
+    final source = ShiftSource.fromId(row['source']);
     return Shift(
       id: id,
-      platform: WorkPlatform.values.firstWhere(
-        (platform) => platform.id == row['platform'],
-        orElse: () => WorkPlatform.other,
+      earnings: Shift.earningsFromJson(
+        row['earnings'],
+        legacyPlatform: row['platform'],
+        // Rows written before the column existed, and rows from a project
+        // whose migration has not run yet.
+        legacyGross: () => _number(row['gross']),
+        // Lenient on purpose: one unreadable earnings line must not throw out
+        // of here and abort the sync, per this method's contract.
+        parseAmount: _number,
       ),
-      gross: _number(row['gross']),
       hours: _number(row['hours']),
       miles: _number(row['miles']),
       directExpenses: _number(row['direct_expenses']),
       vehicleCostPerMile: _number(row['vehicle_cost_per_mile']),
       completedAt: completedAt.toLocal(),
-      source: ShiftSource.fromId(row['source']),
+      source: source,
+      // A row written before the column existed falls back to the same rule the
+      // local decoder uses: only an import can arrive without the driver's own
+      // fuel, toll and parking figures.
+      costsReviewed: switch (row['costs_reviewed']) {
+        final bool reviewed => reviewed,
+        _ => source != ShiftSource.imported,
+      },
     );
   }
 

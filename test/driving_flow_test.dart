@@ -48,7 +48,8 @@ void main() {
       find.byKey(const ValueKey('driving-session-active')),
       findsOneWidget,
     );
-    expect(find.text('DRIVING'), findsOneWidget);
+    expect(find.text('Driving'), findsOneWidget);
+    expect(find.text('Uber'), findsNothing);
     expect(store.snapshot.activeSession, isNotNull);
 
     // Drive a measurable distance.
@@ -197,7 +198,7 @@ void main() {
     final store = MemoryAppStore(
       AppSnapshot(
         driverName: 'Ahmed',
-        activeSession: DrivingSession(
+        activeSession: DrivingSession.single(
           id: 'session-1',
           startedAt: startedAt,
           platform: WorkPlatform.lyft,
@@ -222,7 +223,165 @@ void main() {
       find.byKey(const ValueKey('driving-session-active')),
       findsOneWidget,
     );
-    expect(find.textContaining('9.9 miles'), findsOneWidget);
+    expect(find.textContaining('9.9 mi'), findsOneWidget);
     expect(find.textContaining('02:0'), findsOneWidget);
+  });
+
+  testWidgets('a break is excluded from the hours the shift saves', (
+    tester,
+  ) async {
+    final tracker = FakeLocationTracker();
+    addTearDown(tracker.dispose);
+    final store = MemoryAppStore(const AppSnapshot(driverName: 'Ahmed'));
+
+    final startedAt = DateTime(2026, 8, 11, 6, 2);
+    var now = startedAt;
+
+    await tester.pumpWidget(
+      DriverWealthApp(
+        store: store,
+        locationTracker: tracker,
+        drivingRefreshInterval: null,
+        clock: () => now,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('start-driving-button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('start-platform-uber')));
+    await tester.pumpAndSettle();
+
+    await tracker.emit(
+      DriverLocation(latitude: 37.0, longitude: -122.0, timestamp: startedAt),
+    );
+    await tracker.emit(
+      DriverLocation(
+        latitude: 37.03,
+        longitude: -122.0,
+        timestamp: startedAt.add(const Duration(minutes: 4)),
+      ),
+    );
+    await tester.pump();
+
+    // Two hours in, the driver stops for lunch.
+    now = startedAt.add(const Duration(hours: 2));
+    await tester.tap(find.byKey(const ValueKey('pause-shift-button')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Paused'), findsOneWidget);
+    expect(find.text('Driving'), findsNothing);
+    expect(store.snapshot.activeSession!.isPaused, isTrue);
+    // Two things are deliberately left to other tests. That the location
+    // stream is torn down is asserted in driving_session_test, because the
+    // platform teardown does not complete inside testWidgets' fake async. And
+    // the warning threshold has its own test below, because the card measures
+    // the break against DateTime.now() rather than the injected clock these
+    // fixed dates drive.
+
+    // Forty-five minutes later they are back on the road.
+    now = startedAt.add(const Duration(hours: 2, minutes: 45));
+    await tester.tap(find.byKey(const ValueKey('resume-shift-button')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Driving'), findsOneWidget);
+    expect(store.snapshot.activeSession!.isPaused, isFalse);
+
+    // Finishing at 11:17 wall clock, but only 4.5 hours of it were worked.
+    now = startedAt.add(const Duration(hours: 5, minutes: 15));
+    await tester.tap(find.byKey(const ValueKey('end-shift-button')));
+    await tester.pumpAndSettle();
+
+    final fields = find.byType(TextFormField);
+    await tester.enterText(fields.at(0), '287');
+    await tester.ensureVisible(find.text('Calculate true profit'));
+    await tester.tap(find.text('Calculate true profit'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Save to Today'));
+    await tester.tap(find.text('Save to Today'));
+    await tester.pumpAndSettle();
+
+    final saved = store.snapshot.shifts.single;
+    expect(saved.hours, closeTo(4.5, .01));
+    // The break took time off the shift; it must not have taken miles off it.
+    expect(saved.miles, greaterThan(2));
+  });
+
+  testWidgets('a long break is called out rather than left to run', (
+    tester,
+  ) async {
+    final tracker = FakeLocationTracker();
+    addTearDown(tracker.dispose);
+
+    final startedAt = DateTime.now().subtract(const Duration(hours: 3));
+    final store = MemoryAppStore(
+      AppSnapshot(
+        driverName: 'Ahmed',
+        activeSession: DrivingSession.single(
+          id: 'session-1',
+          startedAt: startedAt,
+          platform: WorkPlatform.uber,
+          distanceMeters: 16000,
+          // Paused 40 minutes ago: past the warning, short of the auto-end.
+          pausedAt: DateTime.now().subtract(const Duration(minutes: 40)),
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(
+      DriverWealthApp(
+        store: store,
+        locationTracker: tracker,
+        drivingRefreshInterval: null,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('paused-notice')), findsOneWidget);
+    expect(find.textContaining('Paused for 40m'), findsOneWidget);
+    // The session is still the driver's to resume — warned, not ended.
+    expect(store.snapshot.activeSession, isNotNull);
+  });
+
+  testWidgets('a forgotten break ends itself into a recoverable draft', (
+    tester,
+  ) async {
+    final tracker = FakeLocationTracker();
+    addTearDown(tracker.dispose);
+
+    final startedAt = DateTime.now().subtract(const Duration(hours: 9));
+    final store = MemoryAppStore(
+      AppSnapshot(
+        driverName: 'Ahmed',
+        activeSession: DrivingSession.single(
+          id: 'session-1',
+          startedAt: startedAt,
+          platform: WorkPlatform.uber,
+          distanceMeters: 16000,
+          // Paused six hours ago and never resumed.
+          pausedAt: startedAt.add(const Duration(hours: 3)),
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(
+      DriverWealthApp(
+        store: store,
+        locationTracker: tracker,
+        drivingRefreshInterval: null,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Closed out on the way in, so nothing keeps counting.
+    expect(store.snapshot.activeSession, isNull);
+    expect(find.byKey(const ValueKey('driving-session-active')), findsNothing);
+
+    // The hours are not lost: they are waiting on the recovery card, cut off
+    // where the driver actually stopped rather than where they were noticed.
+    expect(find.byKey(const ValueKey('pending-draft-card')), findsOneWidget);
+    expect(store.snapshot.pendingDraft!.hours, closeTo(3, .01));
+    // No earnings form was thrown in front of whatever they were doing.
+    expect(find.text('How much did you earn?'), findsNothing);
   });
 }

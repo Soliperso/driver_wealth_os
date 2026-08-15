@@ -39,7 +39,7 @@ class RecordingSyncService implements SyncService {
 }
 
 void main() {
-  Shift shift(String id, {double gross = 200}) => Shift(
+  Shift shift(String id, {double gross = 200}) => Shift.single(
     id: id,
     platform: WorkPlatform.uber,
     gross: gross,
@@ -54,6 +54,10 @@ void main() {
     String id, {
     String gross = '200.00',
     String? deletedAt,
+    String source = 'manual',
+    // Absent rather than null by default, so the pre-column case is what the
+    // other tests exercise unless one asks for the flag explicitly.
+    bool? costsReviewed,
   }) => {
     'id': id,
     'platform': 'uber',
@@ -65,7 +69,8 @@ void main() {
     'direct_expenses': '20.00',
     'vehicle_cost_per_mile': '0.2000',
     'completed_at': '2026-08-11T18:00:00Z',
-    'source': 'manual',
+    'source': source,
+    'costs_reviewed': ?costsReviewed,
     'deleted_at': deletedAt,
   };
 
@@ -128,6 +133,46 @@ void main() {
       expect(merged.shifts.map((shift) => shift.id), ['good']);
     });
 
+    test('an imported shift awaiting its costs survives a pull unreviewed', () {
+      final merged = mergePulledShifts(const AppSnapshot(), [
+        row(
+          'imported:uber:2026-08-11',
+          source: 'imported',
+          costsReviewed: false,
+        ),
+      ]);
+
+      // Losing this flag marks the shift reviewed, which drops it out of the
+      // History cost-review notice and lets it into the platform comparison
+      // with no fuel, tolls or parking — overstating profit.
+      expect(merged.shifts.single.costsReviewed, isFalse);
+    });
+
+    test('a reviewed import stays reviewed', () {
+      final merged = mergePulledShifts(const AppSnapshot(), [
+        row(
+          'imported:uber:2026-08-11',
+          source: 'imported',
+          costsReviewed: true,
+        ),
+      ]);
+
+      expect(merged.shifts.single.costsReviewed, isTrue);
+    });
+
+    test('a row predating the column infers the flag from its source', () {
+      final merged = mergePulledShifts(const AppSnapshot(), [
+        row('old-manual'),
+        row('old-import', source: 'imported'),
+      ]);
+
+      final byId = {for (final shift in merged.shifts) shift.id: shift};
+      // The same rule the local decoder applies: only an import can arrive
+      // without the driver's own cost figures.
+      expect(byId['old-manual']!.costsReviewed, isTrue);
+      expect(byId['old-import']!.costsReviewed, isFalse);
+    });
+
     test('an empty pull leaves the snapshot identical', () {
       final local = AppSnapshot(shifts: [shift('a')]);
 
@@ -181,10 +226,7 @@ void main() {
       tester,
     ) async {
       final store = MemoryAppStore(
-        AppSnapshot(
-          driverName: 'Ahmed',
-          syncCursor: DateTime.utc(2026, 8, 1),
-        ),
+        AppSnapshot(driverName: 'Ahmed', syncCursor: DateTime.utc(2026, 8, 1)),
       );
       final sync = await pumpSignedIn(tester, store: store);
       sync.calls.clear();

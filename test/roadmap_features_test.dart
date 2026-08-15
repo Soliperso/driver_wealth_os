@@ -86,7 +86,7 @@ List<Shift> _patternShifts() {
   ];
 }
 
-Shift _shift(String id, DateTime day, int hour, double profit) => Shift(
+Shift _shift(String id, DateTime day, int hour, double profit) => Shift.single(
   id: id,
   platform: WorkPlatform.uber,
   gross: profit,

@@ -87,6 +87,14 @@ class DistanceAccumulator {
   double get miles => _meters / 1609.344;
   DriverLocation? get lastLocation => _last;
 
+  /// Forgets the anchor fix without touching the banked total.
+  ///
+  /// Used when tracking stops and restarts within one session, as a break
+  /// does. Without it the first fix after the gap would be measured against
+  /// wherever the driver was before it and credited as a straight line across
+  /// the whole break — miles that were never driven.
+  void reanchor() => _last = null;
+
   /// Returns true when the fix advanced the total.
   bool add(DriverLocation location) {
     if (location.accuracyMeters > maxAccuracyMeters) return false;

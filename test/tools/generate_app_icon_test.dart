@@ -26,11 +26,7 @@ void main() {
     // what Android and iOS expect to letterbox themselves. The adaptive
     // foreground is inset and transparent, because Android crops it to
     // whatever shape the launcher uses and a full-bleed image loses its edges.
-    await _capture(
-      tester,
-      const _IconCanvas(),
-      'assets/icon/app_icon.png',
-    );
+    await _capture(tester, const _IconCanvas(), 'assets/icon/app_icon.png');
     await _capture(
       tester,
       const _IconCanvas(adaptive: true),
@@ -39,11 +35,7 @@ void main() {
   });
 }
 
-Future<void> _capture(
-  WidgetTester tester,
-  Widget child,
-  String path,
-) async {
+Future<void> _capture(WidgetTester tester, Widget child, String path) async {
   // 1024 is the App Store's required source size; every smaller asset is
   // downscaled from it.
   tester.view
@@ -53,10 +45,13 @@ Future<void> _capture(
 
   final key = GlobalKey();
   await tester.pumpWidget(
-    RepaintBoundary(key: key, child: MediaQuery(
-      data: const MediaQueryData(size: Size(1024, 1024)),
-      child: Directionality(textDirection: TextDirection.ltr, child: child),
-    )),
+    RepaintBoundary(
+      key: key,
+      child: MediaQuery(
+        data: const MediaQueryData(size: Size(1024, 1024)),
+        child: Directionality(textDirection: TextDirection.ltr, child: child),
+      ),
+    ),
   );
   await tester.pumpAndSettle();
 

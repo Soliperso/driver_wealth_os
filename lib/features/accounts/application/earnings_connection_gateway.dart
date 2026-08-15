@@ -81,9 +81,9 @@ final class SupabaseArgyleConnectionGateway
               _createSession(platform)
                   .then((newSession) => updateToken(newSession.userToken))
                   // Without this the Link UI sits on an expired token forever.
-                  .catchError((Object _) => finish(
-                        ConnectionLaunchResult.dismissed,
-                      )),
+                  .catchError(
+                    (Object _) => finish(ConnectionLaunchResult.dismissed),
+                  ),
             );
           },
         ),

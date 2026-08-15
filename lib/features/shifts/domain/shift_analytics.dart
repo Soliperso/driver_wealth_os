@@ -4,10 +4,16 @@ import 'shift_summary.dart';
 class ShiftAnalytics {
   const ShiftAnalytics._();
 
-  static WeeklyPerformance weekly(Iterable<Shift> shifts, {DateTime? now}) {
+  static WeeklyPerformance weekly(
+    Iterable<Shift> shifts, {
+    DateTime? now,
+    int weekStartsOn = DateTime.monday,
+  }) {
     final current = now ?? DateTime.now();
     final today = DateTime(current.year, current.month, current.day);
-    final weekStart = today.subtract(Duration(days: today.weekday - 1));
+    final weekStart = today.subtract(
+      Duration(days: _daysSinceWeekStart(today.weekday, weekStartsOn)),
+    );
     final previousStart = weekStart.subtract(const Duration(days: 7));
     final unique = _unique(shifts);
     final currentShifts = unique
@@ -44,6 +50,7 @@ class ShiftAnalytics {
         : _currency(summary.netProfit - previousSummary.netProfit);
     return WeeklyPerformance(
       weekStart: weekStart,
+      weekStartsOn: weekStartsOn,
       summary: summary,
       previousSummary: previousSummary,
       netProfitChange: change,
@@ -55,7 +62,13 @@ class ShiftAnalytics {
     );
   }
 
-  /// Seven totals, Monday first, so a week can be charted day by day.
+  /// How far [weekday] sits into a week that begins on [weekStartsOn]. Monday
+  /// start gives the old `weekday - 1`; Sunday start shifts everything by one.
+  static int _daysSinceWeekStart(int weekday, int weekStartsOn) =>
+      (weekday - weekStartsOn + 7) % 7;
+
+  /// Seven totals starting on the driver's own first day, so a week can be
+  /// charted day by day without splitting their pay week in half.
   static List<double> _dailyNetProfit(List<Shift> shifts, DateTime weekStart) {
     final totals = List<double>.filled(7, 0);
     for (final shift in shifts) {
@@ -94,11 +107,19 @@ class ShiftAnalytics {
     ];
   }
 
-  static List<MoneyLeak> moneyLeaks(Iterable<Shift> shifts) {
+  static List<MoneyLeak> moneyLeaks(
+    Iterable<Shift> shifts, {
+    double hourlyFloor = 0,
+  }) {
     final unique = _unique(shifts).where((shift) => shift.hours > 0).toList();
     if (unique.isEmpty) return const [];
     final total = ShiftSummary.from(unique);
-    final baselineRate = total.netPerHour;
+    // The driver's own floor is the honest bar. Their tracked average is the
+    // fallback for anyone who has not set one — but an average always leaves
+    // half the shifts "below average", which is a fact about arithmetic, not a
+    // leak worth chasing.
+    final usesFloor = hourlyFloor > 0;
+    final baselineRate = usesFloor ? hourlyFloor : total.netPerHour * .75;
     final leaks = <MoneyLeak>[];
     for (final shift in unique) {
       final candidates = <MoneyLeak>[];
@@ -114,7 +135,7 @@ class ShiftAnalytics {
           ),
         );
       }
-      if (baselineRate > 0 && shift.netPerHour < baselineRate * .75) {
+      if (baselineRate > 0 && shift.netPerHour < baselineRate) {
         final recovery = ((baselineRate - shift.netPerHour) * shift.hours)
             .clamp(0, double.infinity)
             .toDouble();
@@ -123,13 +144,13 @@ class ShiftAnalytics {
             shiftId: shift.id,
             type: MoneyLeakType.lowHourlyProfit,
             title: 'Low-profit hours',
-            // A shift that lost money is not "139% below average" — nothing can
-            // be more than 100% below. Say what actually happened instead.
+            // A shift that lost money is not "139% below" — nothing can be more
+            // than 100% below. Say what actually happened instead.
             detail: shift.netPerHour < 0
                 ? '${shift.platform.displayName} cost more per hour than it paid.'
                 : '${shift.platform.displayName} ran '
                       '${_percentBelow(shift.netPerHour, baselineRate)} below '
-                      'your tracked hourly average.',
+                      '${usesFloor ? 'your \$${_rate(baselineRate)}/hr floor' : 'your tracked hourly average'}.',
             potentialRecovery: recovery,
           ),
         );
@@ -179,6 +200,10 @@ class ShiftAnalytics {
     return PatternGrade.d;
   }
 
+  static String _rate(double value) => value.truncateToDouble() == value
+      ? value.toStringAsFixed(0)
+      : value.toStringAsFixed(2);
+
   static String _percentBelow(double value, double baseline) =>
       '${(((1 - value / baseline) * 100).round()).clamp(0, 99)}%';
 
@@ -193,14 +218,27 @@ class WeeklyPerformance {
     required this.netProfitChange,
     required this.bestShift,
     required this.weakestShift,
+    this.weekStartsOn = DateTime.monday,
     this.netProfitDelta,
     this.dailyNetProfit = const [0, 0, 0, 0, 0, 0, 0],
     this.previousDailyNetProfit = const [0, 0, 0, 0, 0, 0, 0],
   });
 
   final DateTime weekStart;
+
+  /// The weekday [dailyNetProfit] index 0 refers to, so charts can label their
+  /// columns without re-deriving the driver's preference.
+  final int weekStartsOn;
+
+  /// Short weekday labels aligned to [weekStartsOn].
+  List<String> get dayLabels {
+    const short = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    return [for (var i = 0; i < 7; i++) short[(weekStartsOn - 1 + i) % 7]];
+  }
+
   final ShiftSummary summary;
   final ShiftSummary previousSummary;
+
   /// Week-over-week change as a ratio. Null unless the prior week turned a
   /// profit, because a percentage against zero or a loss says nothing.
   final double? netProfitChange;
@@ -212,7 +250,7 @@ class WeeklyPerformance {
   final Shift? bestShift;
   final Shift? weakestShift;
 
-  /// Monday-first daily totals for the current and prior week.
+  /// Daily totals for the current and prior week, indexed from [weekStartsOn].
   final List<double> dailyNetProfit;
   final List<double> previousDailyNetProfit;
 }

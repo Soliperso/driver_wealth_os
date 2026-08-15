@@ -23,12 +23,19 @@ abstract final class Money {
     decimalDigits: 0,
   );
   static final _plain = NumberFormat.decimalPattern(_locale);
+  static final _compact = NumberFormat.compactSimpleCurrency(locale: _locale);
 
   /// `$1,234.56`, and `-$40.00` for a loss.
   static String cents(double value) => _cents.format(value);
 
   /// `$1,235` — for goals and targets, where cents are noise.
   static String whole(double value) => _whole.format(value);
+
+  /// `$1.2K` — for a chart's value axis, where a full figure would eat the
+  /// plot. Falls back to whole dollars below a thousand, so `$250` stays `$250`
+  /// rather than becoming `$0.3K`.
+  static String compact(double value) =>
+      value.abs() < 1000 ? whole(value) : _compact.format(value);
 
   /// Always carries a sign, so a gain reads unambiguously as a gain.
   static String signed(double value) =>

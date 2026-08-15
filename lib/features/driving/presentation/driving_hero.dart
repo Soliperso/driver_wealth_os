@@ -5,7 +5,10 @@ import 'package:flutter/material.dart';
 import '../../../core/format/money.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/soft_surfaces.dart';
+import '../../accounts/domain/work_platform.dart';
+import '../../accounts/presentation/platform_logo.dart';
 import '../domain/driving_session.dart';
+import 'shift_control.dart';
 
 /// The live session card.
 ///
@@ -22,10 +25,32 @@ class DrivingHero extends StatefulWidget {
     this.trackingInterrupted = false,
     this.refreshInterval = const Duration(seconds: 1),
     this.onUpgradeBackground,
+    this.onPause,
+    this.onResume,
+    this.onAutoEnd,
+    this.onAddPlatform,
+    this.onRemovePlatform,
   });
 
   final DrivingSession session;
   final Future<void> Function() onEndShift;
+
+  /// Switches another app on mid-shift. Null renders the app chips read-only,
+  /// which is what a screen with no controller wired should show.
+  final Future<void> Function()? onAddPlatform;
+
+  /// Switches one app off, leaving the shift running on the rest.
+  final Future<void> Function(WorkPlatform platform)? onRemovePlatform;
+
+  /// Starts and ends a break. Both are absent when no controller is wired,
+  /// which hides the control rather than offering a button that does nothing.
+  final Future<void> Function()? onPause;
+  final Future<void> Function()? onResume;
+
+  /// Fired from the display ticker once a break has run past
+  /// [pauseAutoEndAfter]. Idempotent downstream, so it costs nothing to call
+  /// more than once.
+  final VoidCallback? onAutoEnd;
 
   /// Only foreground location was granted, so mileage may stall once the
   /// driver switches to Uber.
@@ -60,7 +85,15 @@ class _DrivingHeroState extends State<DrivingHero> {
     super.initState();
     final interval = widget.refreshInterval;
     if (interval != null) {
-      _ticker = Timer.periodic(interval, (_) => setState(() {}));
+      _ticker = Timer.periodic(interval, (_) {
+        // The overrun check rides the clock that is already running rather
+        // than starting a second timer. It only matters while the app is
+        // open; the cold-start path is handled in the controller.
+        if (widget.session.currentPause() >= pauseAutoEndAfter) {
+          widget.onAutoEnd?.call();
+        }
+        setState(() {});
+      });
     }
   }
 
@@ -75,46 +108,55 @@ class _DrivingHeroState extends State<DrivingHero> {
     final colors = Theme.of(context).colorScheme;
     final session = widget.session;
     final elapsed = session.elapsed();
+    final paused = session.isPaused;
+    final breakSoFar = session.currentPause();
 
     return GlassSurface(
       key: const ValueKey('driving-session-active'),
-      elevation: Elevation.hero,
-      padding: const EdgeInsets.all(Space.xl),
-      tint: colors.primaryContainer.withValues(alpha: .9),
+      elevation: Elevation.flat,
+      radius: Radii.lg,
+      padding: const EdgeInsets.all(Space.lg),
+      tint: paused
+          ? colors.surface.withValues(alpha: .84)
+          : colors.primaryContainer.withValues(alpha: .68),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
             children: [
-              const _LiveDot(),
+              _LiveDot(paused: paused),
               const SizedBox(width: Space.sm),
               Expanded(
                 child: Text(
-                  'DRIVING',
+                  paused ? 'Paused' : 'Driving',
                   style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                    color: colors.primary,
+                    color: paused ? colors.onSurfaceVariant : colors.primary,
                     fontWeight: FontWeight.w800,
-                    letterSpacing: 1,
                   ),
-                ),
-              ),
-              Text(
-                session.platform.displayName,
-                style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                  color: colors.onSurfaceVariant,
                 ),
               ),
             ],
           ),
+          Space.gapMd,
+          // Directly under the status, above the clock: what you are running,
+          // then how long you have been running it. Editable in place because
+          // a driver switches Lyft on two hours into an Uber shift and must
+          // not have to end the shift to say so.
+          _AppsRow(
+            live: session.livePlatforms,
+            onAdd: widget.onAddPlatform,
+            onRemove: widget.onRemovePlatform,
+          ),
           Space.gapLg,
           Semantics(
             label:
-                'Driving for ${elapsed.inHours} hours '
+                '${paused ? 'Paused after' : 'Driving for'} '
+                '${elapsed.inHours} hours '
                 '${elapsed.inMinutes.remainder(60)} minutes, '
                 '${Money.number(session.miles)} miles tracked',
             excludeSemantics: true,
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 Text(
                   formatElapsed(elapsed),
@@ -122,63 +164,87 @@ class _DrivingHeroState extends State<DrivingHero> {
                     context,
                   ).textTheme.displaySmall?.copyWith(color: colors.onSurface),
                 ),
-                Space.gapSm,
+                Space.gapXs,
                 Text(
-                  '${Money.number(session.miles)} miles',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    color: colors.onSurface,
-                    fontWeight: FontWeight.w700,
+                  'Started at ${MaterialLocalizations.of(context).formatTimeOfDay(TimeOfDay.fromDateTime(session.startedAt), alwaysUse24HourFormat: MediaQuery.alwaysUse24HourFormatOf(context))}',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: colors.onSurfaceVariant,
                   ),
                 ),
               ],
             ),
           ),
           Space.gapLg,
-          // Cost is shown live because it is already accruing. Hiding it until
-          // the end would let a driver finish a shift before learning it was
-          // expensive.
-          Row(
-            children: [
-              Icon(
-                Icons.directions_car_outlined,
-                size: 16,
-                color: colors.onSurfaceVariant,
-              ),
-              const SizedBox(width: Space.sm),
-              Expanded(
-                child: Text(
-                  'Estimated vehicle cost',
-                  style: Theme.of(context).textTheme.bodySmall,
+          SizedBox(
+            height: 72,
+            child: Row(
+              children: [
+                Expanded(
+                  child: _LiveMetric(
+                    label: 'Miles',
+                    value: '${Money.number(session.miles)} mi',
+                  ),
                 ),
-              ),
-              Text(
-                Money.cents(session.estimatedVehicleCost),
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: colors.onSurface,
-                  fontWeight: FontWeight.w700,
-                  fontFeatures: tabularFigures,
+                const SizedBox(width: Space.sm),
+                Expanded(
+                  child: _LiveMetric(
+                    label: 'Estimated cost',
+                    value: Money.cents(session.estimatedVehicleCost),
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-          // An outright stall outranks the foreground-only warning: if nothing
-          // is being counted, whether it would count in the background is moot.
-          if (widget.trackingInterrupted) ...[
+          // Cost stays visible while it accrues. Hiding it until the end would
+          // let a driver finish before learning that the shift was expensive.
+          // A long break outranks both tracking warnings, because during one
+          // the tracking is off by design and saying so is the whole point.
+          if (paused && breakSoFar >= pauseWarningAfter) ...[
+            Space.gapMd,
+            _PausedNotice(taken: breakSoFar),
+          ] else if (widget.trackingInterrupted) ...[
+            // An outright stall outranks the foreground-only warning: if
+            // nothing is being counted, whether it would count in the
+            // background is moot.
             Space.gapMd,
             const _TrackingInterruptedNotice(),
           ] else if (widget.backgroundLimited) ...[
             Space.gapMd,
             _LimitedBackgroundNotice(onUpgrade: widget.onUpgradeBackground),
           ],
-          Space.gapXl,
-          FilledButton(
+          if (widget.onPause != null && widget.onResume != null) ...[
+            Space.gapLg,
+            Center(
+              child: ShiftControl(
+                diameter: 80,
+                state: paused
+                    ? ShiftControlState.paused
+                    : ShiftControlState.driving,
+                // Only a break fills the ring, and it fills toward the point
+                // the shift ends itself — the one thing on this card the
+                // driver cannot read anywhere else. While driving it stays a
+                // plain bezel, because the clock directly above it already
+                // says everything a sweep could.
+                ringProgress: paused
+                    ? breakSoFar.inMilliseconds /
+                          pauseAutoEndAfter.inMilliseconds
+                    : 0,
+                onPressed: paused ? _resume : _pause,
+              ),
+            ),
+          ],
+          Space.gapLg,
+          // Kept a plain full-width button rather than folded into the round
+          // control: it is the one action here that cannot be taken back, so
+          // it should not sit under the thumb that pauses.
+          OutlinedButton(
             key: const ValueKey('end-shift-button'),
             onPressed: _ending ? null : _end,
-            style: FilledButton.styleFrom(
-              backgroundColor: colors.onSurface,
-              foregroundColor: colors.surface,
+            style: OutlinedButton.styleFrom(
+              foregroundColor: colors.error,
+              side: BorderSide(color: colors.error.withValues(alpha: .38)),
             ),
-            child: Text(_ending ? 'Ending…' : 'END SHIFT'),
+            child: Text(_ending ? 'Ending…' : 'End shift'),
           ),
         ],
       ),
@@ -193,32 +259,242 @@ class _DrivingHeroState extends State<DrivingHero> {
       if (mounted) setState(() => _ending = false);
     }
   }
+
+  Future<void> _pause() async => widget.onPause?.call();
+
+  Future<void> _resume() async => widget.onResume?.call();
+}
+
+/// The apps this shift is running, and the controls to change them.
+///
+/// A chip per live app plus one "Add app" button. The button is present even on
+/// a single-app shift, because it is the only place a driver finds out that
+/// running two at once is supported at all.
+///
+/// Removing is a plain tap with no confirmation: it closes the app's span
+/// rather than deleting anything, the shift keeps running, and switching it
+/// back on is one more tap. The last remaining app has no remove control at
+/// all — a shift running nothing has no one to attribute the earnings to, and
+/// a driver who wants that wants End shift, which is its own deliberate button.
+class _AppsRow extends StatelessWidget {
+  const _AppsRow({required this.live, this.onAdd, this.onRemove});
+
+  final List<WorkPlatform> live;
+  final Future<void> Function()? onAdd;
+  final Future<void> Function(WorkPlatform platform)? onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    final removable = live.length > 1 && onRemove != null;
+    return SizedBox(
+      // Tall enough for the 30px logo plus the tile's padding and border;
+      // anything tighter overflows the row rather than scrolling it.
+      height: 46,
+      child: Row(
+        children: [
+          // The live apps scroll; the button does not. Pinning it to the right
+          // edge keeps it in the same place whether the shift runs one app or
+          // four, so it never slides under the thumb reaching for a chip.
+          Expanded(
+            child: ListView(
+              key: const ValueKey('driving-apps-row'),
+              scrollDirection: Axis.horizontal,
+              children: [
+                for (final platform in live) ...[
+                  _AppChip(
+                    platform: platform,
+                    onRemove: removable ? () => onRemove!(platform) : null,
+                  ),
+                  const SizedBox(width: Space.sm),
+                ],
+              ],
+            ),
+          ),
+          if (onAdd != null)
+            ActionChip(
+              key: const ValueKey('add-app-button'),
+              avatar: const Icon(Icons.add_rounded, size: 18),
+              label: const Text('Add app'),
+              onPressed: () => onAdd!(),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AppChip extends StatelessWidget {
+  const _AppChip({required this.platform, this.onRemove});
+
+  final WorkPlatform platform;
+  final VoidCallback? onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Semantics(
+      // The logo alone carries no name for a screen reader, so the label does.
+      label: '${platform.displayName}, running',
+      excludeSemantics: true,
+      child: Container(
+        key: ValueKey('app-chip-${platform.id}'),
+        padding: EdgeInsets.fromLTRB(6, 5, onRemove == null ? 6 : 2, 5),
+        decoration: BoxDecoration(
+          // Lifted off the card rather than tinted with it: the tile has to
+          // read as a surface the logo sits on, or a dark brand disc sinks
+          // into the hero's own dark fill.
+          color: colors.surface,
+          borderRadius: BorderRadius.circular(Radii.sm),
+          border: Border.all(
+            color: colors.outlineVariant.withValues(alpha: .55),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Logo only. A driver knows their own apps by their marks, and on
+            // a card read at a glance in a moving car the wordmarks are noise.
+            //
+            // Deliberately not a Material chip. InputChip with no onPressed or
+            // onDeleted counts as disabled and dims whatever it is given as a
+            // label, which washed the brand disc out to grey on exactly the
+            // common case — a shift running one app, where nothing is
+            // removable.
+            PlatformLogo(platform: platform, size: 30),
+            // Absent on the last remaining app rather than disabled: a
+            // greyed-out × invites a tap that will be refused.
+            if (onRemove != null)
+              IconButton(
+                onPressed: onRemove,
+                tooltip: 'Stop ${platform.displayName}',
+                iconSize: 16,
+                visualDensity: VisualDensity.compact,
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                icon: const Icon(Icons.close_rounded),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _LiveMetric extends StatelessWidget {
+  const _LiveMetric({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: Space.md,
+        vertical: Space.sm,
+      ),
+      decoration: BoxDecoration(
+        color: colors.surface.withValues(alpha: .55),
+        borderRadius: BorderRadius.circular(Radii.sm),
+        border: Border.all(color: colors.outlineVariant.withValues(alpha: .42)),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(
+              context,
+            ).textTheme.labelSmall?.copyWith(color: colors.onSurfaceVariant),
+          ),
+          const SizedBox(height: Space.xs),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              color: colors.onSurface,
+              fontWeight: FontWeight.w800,
+              fontFeatures: tabularFigures,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Shown once a break has run long enough to look forgotten.
+///
+/// The quiet failure this catches: a paused session counts no time and no
+/// miles, so a driver who paused for coffee and drove off without resuming
+/// records a shorter, cheaper shift than they drove — which reads as a more
+/// profitable one. Saying how long it has been, and what happens next, is the
+/// only way they find out before the numbers are wrong.
+class _PausedNotice extends StatelessWidget {
+  const _PausedNotice({required this.taken});
+
+  final Duration taken;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final hours = taken.inHours;
+    final minutes = taken.inMinutes.remainder(60);
+    final spent = hours > 0 ? '${hours}h ${minutes}m' : '${minutes}m';
+    return Container(
+      key: const ValueKey('paused-notice'),
+      padding: const EdgeInsets.all(Space.md),
+      decoration: BoxDecoration(
+        color: colors.tertiaryContainer.withValues(alpha: .75),
+        borderRadius: BorderRadius.circular(Radii.sm),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            Icons.pause_circle_outline_rounded,
+            size: 16,
+            color: colors.onTertiaryContainer,
+          ),
+          const SizedBox(width: Space.sm),
+          Expanded(
+            child: Text(
+              'Paused for $spent. Neither your time nor your miles are '
+              'counting. If you are driving, resume now — this shift ends '
+              'itself after ${pauseAutoEndAfter.inHours} hours paused.',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: colors.onTertiaryContainer,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 /// Makes it unmistakable that tracking is running, which is both a usability
 /// and a privacy obligation.
 ///
-/// Deliberately static. A repeating animation would mean this screen never
-/// reaches a settled frame, which makes every `pumpAndSettle` in every test
-/// that touches it hang — the same trap that already cost this suite a
-/// ten-minute stall once. The ring, the "DRIVING" label and the running clock
-/// already make the state obvious without it.
+/// Deliberately static and shadow-free. The status label and running clock make
+/// the state clear without adding motion or glow to a screen used while moving.
 class _LiveDot extends StatelessWidget {
-  const _LiveDot();
+  const _LiveDot({this.paused = false});
+
+  final bool paused;
 
   @override
   Widget build(BuildContext context) {
-    final color = Theme.of(context).colorScheme.primary;
+    final colors = Theme.of(context).colorScheme;
+    final color = paused ? colors.onSurfaceVariant : colors.primary;
     return Container(
-      width: 10,
-      height: 10,
-      decoration: BoxDecoration(
-        color: color,
-        shape: BoxShape.circle,
-        boxShadow: [
-          BoxShadow(color: color.withValues(alpha: .35), blurRadius: 6),
-        ],
-      ),
+      width: 8,
+      height: 8,
+      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
     );
   }
 }
@@ -277,41 +553,52 @@ class _LimitedBackgroundNotice extends StatelessWidget {
     final colors = Theme.of(context).colorScheme;
     return Container(
       key: const ValueKey('background-limited-notice'),
-      padding: const EdgeInsets.all(Space.md),
+      padding: const EdgeInsets.symmetric(
+        horizontal: Space.md,
+        vertical: Space.sm,
+      ),
       decoration: BoxDecoration(
         color: colors.surface.withValues(alpha: .6),
         borderRadius: BorderRadius.circular(Radii.sm),
+        border: Border.all(color: colors.outlineVariant.withValues(alpha: .36)),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(
-                Icons.info_outline_rounded,
-                size: 16,
-                color: colors.onSurface,
-              ),
-              const SizedBox(width: Space.sm),
-              Expanded(
+          Icon(
+            Icons.info_outline_rounded,
+            size: 16,
+            color: colors.onSurfaceVariant,
+          ),
+          const SizedBox(width: Space.sm),
+          Expanded(
+            child: Semantics(
+              label:
+                  'Background tracking is limited. Miles may stop counting '
+                  'when you switch apps.',
+              child: ExcludeSemantics(
                 child: Text(
-                  'Location is set to “While Using”. Your miles may stop '
-                  'counting when you switch to another app.',
-                  style: Theme.of(context).textTheme.bodySmall,
+                  'Background tracking is limited',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: colors.onSurfaceVariant,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
-            ],
+            ),
           ),
           if (onUpgrade != null) ...[
-            const SizedBox(height: Space.sm),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton(
-                key: const ValueKey('upgrade-background-button'),
-                onPressed: () => onUpgrade!(),
-                child: const Text('Track the full shift'),
+            const SizedBox(width: Space.sm),
+            TextButton(
+              key: const ValueKey('upgrade-background-button'),
+              onPressed: () => onUpgrade!(),
+              style: TextButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(horizontal: Space.sm),
+                minimumSize: const Size(44, 40),
               ),
+              child: const Text('Fix'),
             ),
           ],
         ],

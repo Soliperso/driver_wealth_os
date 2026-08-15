@@ -80,7 +80,7 @@ void main() {
   });
 }
 
-Shift _shift(String id, DateTime completedAt, double gross) => Shift(
+Shift _shift(String id, DateTime completedAt, double gross) => Shift.single(
   id: id,
   platform: WorkPlatform.uber,
   gross: gross,

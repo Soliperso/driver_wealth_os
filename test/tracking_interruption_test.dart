@@ -15,7 +15,10 @@ void main() {
       DrivingSessionController(tracker: tracker, persist: (_) async {});
 
   Future<StartResult> startShift(DrivingSessionController controller) =>
-      controller.start(platform: WorkPlatform.uber, vehicleCostPerMile: 0.30);
+      controller.start(
+        platforms: {WorkPlatform.uber},
+        vehicleCostPerMile: 0.30,
+      );
 
   test('a stream failure mid-shift is reported, not swallowed', () async {
     final tracker = FakeLocationTracker();

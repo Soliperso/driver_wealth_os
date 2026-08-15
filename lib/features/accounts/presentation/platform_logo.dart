@@ -12,20 +12,48 @@ class PlatformLogo extends StatelessWidget {
   final double size;
 
   @override
-  Widget build(BuildContext context) => Container(
-    width: size,
-    height: size,
-    alignment: Alignment.center,
-    decoration: BoxDecoration(
-      color: _backgroundColor(context),
-      shape: BoxShape.circle,
-      border: Border.all(color: Colors.white.withValues(alpha: .24)),
-    ),
-    child: _logo(context),
-  );
+  Widget build(BuildContext context) {
+    final disc = _backgroundColor(context);
+    return Container(
+      width: size,
+      height: size,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: disc,
+        shape: BoxShape.circle,
+        // Drawn in the theme's own foreground rather than a fixed white, so
+        // the ring separates the disc from whatever it sits on in either
+        // theme. The ring is what gives every brand an edge, including the
+        // ones whose colour is close to the surface behind them.
+        border: Border.all(
+          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: .45),
+          width: math.max(1, size * .045),
+        ),
+      ),
+      child: _logo(context, _markColor(context, disc)),
+    );
+  }
+
+  /// White on a dark disc, black on a light one — so a brand whose disc flips
+  /// with the theme keeps a legible mark without a second per-platform table.
+  Color _markColor(BuildContext context, Color disc) => switch (platform) {
+    // The only disc drawn from the scheme rather than a brand colour, so it
+    // takes the scheme's matching foreground instead of a guess.
+    WorkPlatform.other => Theme.of(context).colorScheme.onSecondaryContainer,
+    _ => ThemeData.estimateBrightnessForColor(disc) == Brightness.dark
+        ? Colors.white
+        : Colors.black,
+  };
 
   Color _backgroundColor(BuildContext context) => switch (platform) {
-    WorkPlatform.uber => const Color(0xFF000000),
+    // Uber's lockup is black-on-white, and a black disc on this app's dark
+    // hero card read as a hole punched in the tile rather than a logo — the
+    // hairline ring was the only thing separating the two near-blacks. In a
+    // dark theme the brand's light lockup is both the higher-contrast and the
+    // more faithful of the two; light theme keeps the black disc.
+    WorkPlatform.uber => Theme.of(context).brightness == Brightness.dark
+        ? const Color(0xFFFFFFFF)
+        : const Color(0xFF000000),
     // Uber Eats' own green, so it reads as a sibling brand rather than a
     // duplicate of the rides tile in a list showing both.
     WorkPlatform.uberEats => const Color(0xFF06C167),
@@ -38,32 +66,26 @@ class PlatformLogo extends StatelessWidget {
     WorkPlatform.other => Theme.of(context).colorScheme.secondaryContainer,
   };
 
-  Widget _logo(BuildContext context) {
-    final markSize = size * .58;
+  Widget _logo(BuildContext context, Color mark) {
+    // Bumped from .58: at chip size the mark is only a dozen or so pixels
+    // across, and the disc had more empty margin than logo.
+    final markSize = size * .64;
     return switch (platform) {
-      WorkPlatform.uber => Icon(
-        SimpleIcons.uber,
-        color: Colors.white,
-        size: markSize,
-      ),
+      WorkPlatform.uber => Icon(SimpleIcons.uber, color: mark, size: markSize),
       WorkPlatform.uberEats => Icon(
         SimpleIcons.ubereats,
-        color: Colors.white,
+        color: mark,
         size: markSize,
       ),
-      WorkPlatform.lyft => Icon(
-        SimpleIcons.lyft,
-        color: Colors.white,
-        size: markSize,
-      ),
+      WorkPlatform.lyft => Icon(SimpleIcons.lyft, color: mark, size: markSize),
       WorkPlatform.doorDash => Icon(
         SimpleIcons.doordash,
-        color: Colors.white,
+        color: mark,
         size: markSize,
       ),
       WorkPlatform.instacart => Icon(
         SimpleIcons.instacart,
-        color: Colors.white,
+        color: mark,
         size: markSize,
       ),
       WorkPlatform.grubhub => Text(
@@ -73,7 +95,7 @@ class PlatformLogo extends StatelessWidget {
           applyHeightToLastDescent: false,
         ),
         style: TextStyle(
-          color: Colors.white,
+          color: mark,
           fontSize: size * .31,
           height: 1,
           fontWeight: FontWeight.w900,
@@ -82,15 +104,15 @@ class PlatformLogo extends StatelessWidget {
       ),
       WorkPlatform.amazonFlex => SizedBox.square(
         dimension: markSize,
-        child: const CustomPaint(painter: _AmazonFlexPainter()),
+        child: CustomPaint(painter: _AmazonFlexPainter(mark)),
       ),
       WorkPlatform.walmartSpark => SizedBox.square(
         dimension: markSize,
-        child: const CustomPaint(painter: _WalmartSparkPainter()),
+        child: CustomPaint(painter: _WalmartSparkPainter(mark)),
       ),
       WorkPlatform.other => Icon(
         Icons.work_outline_rounded,
-        color: Theme.of(context).colorScheme.onSecondaryContainer,
+        color: mark,
         size: markSize,
       ),
     };
@@ -98,12 +120,14 @@ class PlatformLogo extends StatelessWidget {
 }
 
 class _AmazonFlexPainter extends CustomPainter {
-  const _AmazonFlexPainter();
+  const _AmazonFlexPainter(this.color);
+
+  final Color color;
 
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = Colors.white
+      ..color = color
       ..strokeWidth = size.width * .13
       ..strokeCap = StrokeCap.round
       ..style = PaintingStyle.stroke;
@@ -133,16 +157,19 @@ class _AmazonFlexPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _AmazonFlexPainter oldDelegate) => false;
+  bool shouldRepaint(covariant _AmazonFlexPainter oldDelegate) =>
+      oldDelegate.color != color;
 }
 
 class _WalmartSparkPainter extends CustomPainter {
-  const _WalmartSparkPainter();
+  const _WalmartSparkPainter(this.color);
+
+  final Color color;
 
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = Colors.white
+      ..color = color
       ..strokeWidth = size.width * .13
       ..strokeCap = StrokeCap.round;
     final center = Offset(size.width / 2, size.height / 2);
@@ -165,5 +192,6 @@ class _WalmartSparkPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _WalmartSparkPainter oldDelegate) => false;
+  bool shouldRepaint(covariant _WalmartSparkPainter oldDelegate) =>
+      oldDelegate.color != color;
 }

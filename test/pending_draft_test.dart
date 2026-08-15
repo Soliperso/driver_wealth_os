@@ -12,7 +12,7 @@ import 'support/fake_location_tracker.dart';
 /// the app never throws them away without the driver saying so.
 void main() {
   /// A shift that was tracked but never priced.
-  Shift draft({String id = 'tracked-1'}) => Shift(
+  Shift draft({String id = 'tracked-1'}) => Shift.single(
     id: id,
     platform: WorkPlatform.uber,
     gross: 0,

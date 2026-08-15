@@ -90,7 +90,7 @@ List<Shift> _seedShifts() {
     double hours,
     double miles,
     double expenses,
-  ) => Shift(
+  ) => Shift.single(
     id: id,
     platform: platform,
     gross: gross,

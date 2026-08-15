@@ -117,7 +117,7 @@ void main() {
   group('session timing', () {
     test('elapsed time is derived from timestamps, not a counter', () {
       final startedAt = DateTime(2026, 8, 11, 6, 2);
-      final session = DrivingSession(
+      final session = DrivingSession.single(
         id: 's1',
         startedAt: startedAt,
         platform: WorkPlatform.uber,
@@ -133,7 +133,7 @@ void main() {
     test('a finished session yields a shift with tracked time and miles', () {
       final startedAt = DateTime(2026, 8, 11, 6, 2);
       final endedAt = startedAt.add(const Duration(hours: 5, minutes: 15));
-      final session = DrivingSession(
+      final session = DrivingSession.single(
         id: 's1',
         startedAt: startedAt,
         platform: WorkPlatform.uber,
@@ -149,6 +149,104 @@ void main() {
       // A session knows what was driven, never what was paid.
       expect(shift.gross, 0);
       expect(shift.directExpenses, 0);
+    });
+  });
+
+  group('session pausing', () {
+    final startedAt = DateTime(2026, 8, 11, 6, 2);
+
+    DrivingSession session({DateTime? pausedAt, int pausedMillis = 0}) =>
+        DrivingSession.single(
+          id: 's1',
+          startedAt: startedAt,
+          platform: WorkPlatform.uber,
+          pausedAt: pausedAt,
+          pausedMillis: pausedMillis,
+        );
+
+    test('an open break stops the clock without stopping the shift', () {
+      final pausedAt = startedAt.add(const Duration(hours: 2));
+      final paused = session(pausedAt: pausedAt);
+      final now = pausedAt.add(const Duration(minutes: 40));
+
+      // The shift is two hours old however long the driver sits there.
+      expect(paused.elapsed(now: now), const Duration(hours: 2));
+      expect(
+        paused.wallElapsed(now: now),
+        const Duration(hours: 2, minutes: 40),
+      );
+      expect(paused.currentPause(now: now), const Duration(minutes: 40));
+      expect(paused.isPaused, isTrue);
+    });
+
+    test('closed breaks accumulate across a shift', () {
+      final resumed = session(
+        pausedMillis: const Duration(minutes: 25).inMilliseconds,
+      );
+      final now = startedAt.add(const Duration(hours: 4));
+
+      expect(resumed.elapsed(now: now), const Duration(hours: 3, minutes: 35));
+      // Nothing is open, so the warning and auto-end thresholds see zero.
+      expect(resumed.currentPause(now: now), Duration.zero);
+      expect(resumed.isPaused, isFalse);
+    });
+
+    test('breaks come off the saved shift, not just the display', () {
+      final endedAt = startedAt.add(const Duration(hours: 5, minutes: 15));
+      final shift = DrivingSession.single(
+        id: 's1',
+        startedAt: startedAt,
+        platform: WorkPlatform.uber,
+        distanceMeters: 221764,
+        vehicleCostPerMile: .30,
+        pausedMillis: const Duration(minutes: 45).inMilliseconds,
+      ).toDraftShift(endedAt: endedAt);
+
+      // toDraftShift computes its own duration, so this is the assertion that
+      // catches the subtraction being applied only to the live clock.
+      expect(shift.hours, closeTo(4.5, .001));
+      expect(shift.miles, closeTo(137.8, .1));
+    });
+
+    test('a shift ended mid-break is not charged for the break', () {
+      final pausedAt = startedAt.add(const Duration(hours: 3));
+      final endedAt = pausedAt.add(const Duration(hours: 2));
+
+      final shift = session(pausedAt: pausedAt).toDraftShift(endedAt: endedAt);
+
+      expect(shift.hours, closeTo(3, .001));
+    });
+
+    test('pause state round-trips through storage', () {
+      final pausedAt = startedAt.add(const Duration(hours: 1));
+      final original = session(
+        pausedAt: pausedAt,
+        pausedMillis: const Duration(minutes: 12).inMilliseconds,
+      );
+
+      final restored = DrivingSession.fromJson(original.toJson())!;
+
+      expect(restored.pausedAt, pausedAt);
+      expect(restored.pausedMillis, original.pausedMillis);
+      expect(restored.isPaused, isTrue);
+    });
+
+    test('a session stored before pause existed loads as never paused', () {
+      // Exactly the payload the previous build wrote.
+      final restored = DrivingSession.fromJson({
+        'id': 's1',
+        'startedAt': startedAt.toIso8601String(),
+        'platform': 'uber',
+        'distanceMeters': 8000.0,
+        'vehicleCostPerMile': 0.30,
+      })!;
+
+      expect(restored.isPaused, isFalse);
+      expect(restored.pausedMillis, 0);
+      expect(
+        restored.elapsed(now: startedAt.add(const Duration(hours: 2))),
+        const Duration(hours: 2),
+      );
     });
   });
 
@@ -175,7 +273,7 @@ void main() {
       final controller = build();
 
       final result = await controller.start(
-        platform: WorkPlatform.uber,
+        platforms: {WorkPlatform.uber},
         vehicleCostPerMile: .30,
       );
 
@@ -190,7 +288,7 @@ void main() {
       final controller = build();
 
       await controller.start(
-        platform: WorkPlatform.uber,
+        platforms: {WorkPlatform.uber},
         vehicleCostPerMile: .30,
       );
 
@@ -202,7 +300,7 @@ void main() {
       final controller = build();
       final t0 = DateTime(2026, 8, 11, 6);
       await controller.start(
-        platform: WorkPlatform.uber,
+        platforms: {WorkPlatform.uber},
         vehicleCostPerMile: .30,
         now: t0,
       );
@@ -221,7 +319,7 @@ void main() {
       final controller = build();
       final t0 = DateTime(2026, 8, 11, 6);
       await controller.start(
-        platform: WorkPlatform.lyft,
+        platforms: {WorkPlatform.lyft},
         vehicleCostPerMile: .30,
         now: t0,
       );
@@ -242,7 +340,7 @@ void main() {
 
     test('a session survives the app being killed mid-shift', () async {
       final startedAt = DateTime(2026, 8, 11, 6, 2);
-      final restored = DrivingSession(
+      final restored = DrivingSession.single(
         id: 'session-1',
         startedAt: startedAt,
         platform: WorkPlatform.uber,
@@ -288,7 +386,7 @@ void main() {
       tracker.permissionAfterUpgrade = LocationPermissionState.always;
       final controller = build();
       await controller.start(
-        platform: WorkPlatform.uber,
+        platforms: {WorkPlatform.uber},
         vehicleCostPerMile: .30,
       );
       expect(controller.backgroundLimited, isTrue);
@@ -306,7 +404,7 @@ void main() {
       tracker.permissionAfterUpgrade = null;
       final controller = build();
       await controller.start(
-        platform: WorkPlatform.uber,
+        platforms: {WorkPlatform.uber},
         vehicleCostPerMile: .30,
       );
 
@@ -317,10 +415,174 @@ void main() {
       expect(controller.backgroundLimited, isTrue);
     });
 
+    test('pausing stops tracking and resuming starts it again', () async {
+      final controller = build();
+      final t0 = DateTime(2026, 8, 11, 6);
+      await controller.start(
+        platforms: {WorkPlatform.uber},
+        vehicleCostPerMile: .30,
+        now: t0,
+      );
+      expect(tracker.started, isTrue);
+
+      await controller.pause(now: t0.add(const Duration(hours: 2)));
+
+      expect(controller.isPaused, isTrue);
+      // Still a live session, just not a counting one.
+      expect(controller.isDriving, isTrue);
+      expect(tracker.stopped, isTrue);
+      expect(persisted.last!.isPaused, isTrue);
+
+      tracker.stopped = false;
+      await controller.resume(
+        now: t0.add(const Duration(hours: 2, minutes: 30)),
+      );
+
+      expect(controller.isPaused, isFalse);
+      expect(tracker.started, isTrue);
+      expect(
+        controller.session!.pausedMillis,
+        const Duration(minutes: 30).inMilliseconds,
+      );
+    });
+
+    test('a break is not credited as mileage across it', () async {
+      final controller = build();
+      final t0 = DateTime(2026, 8, 11, 6);
+      await controller.start(
+        platforms: {WorkPlatform.uber},
+        vehicleCostPerMile: .30,
+        now: t0,
+      );
+
+      await tracker.emit(at(37.0, -122.0, t0));
+      await tracker.emit(at(37.01, -122.0, t0.add(const Duration(minutes: 1))));
+      final beforeBreak = controller.session!.distanceMeters;
+      expect(beforeBreak, greaterThan(1000));
+
+      await controller.pause(now: t0.add(const Duration(minutes: 2)));
+      await controller.resume(now: t0.add(const Duration(hours: 1)));
+
+      // The driver came back 50 km away. Without re-anchoring, this first fix
+      // would be measured from where the break started and banked as miles
+      // nobody drove.
+      await tracker.emit(at(37.5, -122.0, t0.add(const Duration(hours: 1))));
+      expect(controller.session!.distanceMeters, beforeBreak);
+
+      // Movement after that still counts, measured from the new anchor.
+      await tracker.emit(
+        at(37.51, -122.0, t0.add(const Duration(hours: 1, minutes: 1))),
+      );
+      expect(controller.session!.distanceMeters, greaterThan(beforeBreak));
+      expect(
+        controller.session!.distanceMeters - beforeBreak,
+        closeTo(1112, 30),
+      );
+    });
+
+    test('a break under the limit does not end the shift', () async {
+      final controller = build();
+      final t0 = DateTime(2026, 8, 11, 6);
+      await controller.start(
+        platforms: {WorkPlatform.uber},
+        vehicleCostPerMile: .30,
+        now: t0,
+      );
+      await controller.pause(now: t0.add(const Duration(hours: 1)));
+
+      final draft = await controller.endIfPauseExpired(
+        now: t0.add(const Duration(hours: 2, minutes: 59)),
+      );
+
+      expect(draft, isNull);
+      expect(controller.isDriving, isTrue);
+    });
+
+    test('a break past the limit ends the shift where it stopped', () async {
+      final auto = <Shift>[];
+      final controller = DrivingSessionController(
+        tracker: tracker,
+        persist: (session) async => persisted.add(session),
+        onAutoEnded: auto.add,
+      );
+      final t0 = DateTime(2026, 8, 11, 6);
+      await controller.start(
+        platforms: {WorkPlatform.uber},
+        vehicleCostPerMile: .30,
+        now: t0,
+      );
+      await controller.pause(now: t0.add(const Duration(hours: 4)));
+
+      // Noticed a day later; the figures must not depend on when it was
+      // noticed.
+      final draft = await controller.endIfPauseExpired(
+        now: t0.add(const Duration(days: 1)),
+      );
+
+      expect(draft, isNotNull);
+      expect(draft!.hours, closeTo(4, .001));
+      expect(controller.isDriving, isFalse);
+      expect(persisted.last, isNull);
+      // Banked by the controller, because this can fire with no screen
+      // listening.
+      expect(auto.single.hours, closeTo(4, .001));
+    });
+
+    test('a break that outlives the app is closed out on restart', () async {
+      final startedAt = DateTime(2026, 8, 11, 6);
+      final auto = <Shift>[];
+      final controller = DrivingSessionController(
+        tracker: tracker,
+        persist: (session) async => persisted.add(session),
+        onAutoEnded: auto.add,
+        // Reopened well past the limit.
+        clock: () => startedAt.add(const Duration(hours: 12)),
+        restored: DrivingSession.single(
+          id: 'session-1',
+          startedAt: startedAt,
+          platform: WorkPlatform.uber,
+          distanceMeters: 8000,
+          pausedAt: startedAt.add(const Duration(hours: 3)),
+        ),
+      );
+
+      await controller.resumeIfActive();
+
+      expect(controller.isDriving, isFalse);
+      expect(auto.single.hours, closeTo(3, .001));
+      expect(auto.single.miles, closeTo(4.97, .01));
+      // Nothing should start counting for a shift that is already over.
+      expect(tracker.started, isFalse);
+    });
+
+    test('a live break survives the app being killed', () async {
+      final startedAt = DateTime(2026, 8, 11, 6);
+      final controller = DrivingSessionController(
+        tracker: tracker,
+        persist: (session) async => persisted.add(session),
+        clock: () => startedAt.add(const Duration(hours: 3, minutes: 10)),
+        restored: DrivingSession.single(
+          id: 'session-1',
+          startedAt: startedAt,
+          platform: WorkPlatform.uber,
+          distanceMeters: 8000,
+          pausedAt: startedAt.add(const Duration(hours: 3)),
+        ),
+      );
+
+      await controller.resumeIfActive();
+
+      expect(controller.isPaused, isTrue);
+      expect(controller.isDriving, isTrue);
+      // Tracking stays off until the driver resumes; restoring a session must
+      // not quietly restart the meter on a break they are still taking.
+      expect(tracker.started, isFalse);
+    });
+
     test('discard abandons a session without creating a shift', () async {
       final controller = build();
       await controller.start(
-        platform: WorkPlatform.uber,
+        platforms: {WorkPlatform.uber},
         vehicleCostPerMile: .30,
       );
 

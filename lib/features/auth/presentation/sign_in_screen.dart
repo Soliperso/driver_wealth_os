@@ -262,7 +262,9 @@ class _SignInScreenState extends State<SignInScreen> {
     if (email.isEmpty) return 'Enter your email address to continue';
     // Deliberately loose. The authoritative check is whether the code arrives;
     // a stricter pattern here would only reject valid, unusual addresses.
-    final looksLikeEmail = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(email);
+    final looksLikeEmail = RegExp(
+      r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
+    ).hasMatch(email);
     return looksLikeEmail ? null : 'That email address does not look right';
   }
 

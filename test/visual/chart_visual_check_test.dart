@@ -11,6 +11,9 @@ import 'dart:io';
 
 import 'package:driver_wealth_os/core/theme/app_theme.dart';
 import 'package:driver_wealth_os/features/accounts/domain/work_platform.dart';
+import 'package:driver_wealth_os/features/admin/application/admin_repository.dart';
+import 'package:driver_wealth_os/features/admin/domain/admin_models.dart';
+import 'package:driver_wealth_os/features/admin/presentation/admin_dashboard_screen.dart';
 import 'package:driver_wealth_os/features/driving/domain/driving_session.dart';
 import 'package:driver_wealth_os/features/freedom/domain/freedom_goal.dart';
 import 'package:driver_wealth_os/features/freedom/presentation/freedom_screen.dart';
@@ -63,6 +66,9 @@ void main() {
     // handset rather than a device half its width.
     Size size = const Size(400, 900),
     double scrollBy = 0,
+    Key? tap,
+    Key? tapInside,
+    double tapAtFraction = .5,
   }) async {
     const dpr = 2.0;
     tester.view.physicalSize = size * dpr;
@@ -82,6 +88,19 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    if (tap != null) {
+      await tester.tap(find.byKey(tap));
+      await tester.pumpAndSettle();
+    }
+    // For hit areas with no widget of their own to tap — a bar inside a
+    // painted plot is addressed by position, not by key.
+    if (tapInside != null) {
+      final box = tester.getRect(find.byKey(tapInside));
+      await tester.tapAt(
+        Offset(box.left + box.width * tapAtFraction, box.center.dy),
+      );
+      await tester.pumpAndSettle();
+    }
     if (scrollBy != 0) {
       await tester.drag(find.byType(ListView).first, Offset(0, -scrollBy));
       await tester.pumpAndSettle();
@@ -93,8 +112,10 @@ void main() {
     );
   }
 
+  // The hero card now carries the period selector, so the top of the screen is
+  // the part worth looking at rather than something to scroll past.
   testWidgets('history light', (tester) async {
-    await capture(tester, 'history_light', _history(), scrollBy: 120);
+    await capture(tester, 'history_light', _history());
   });
 
   testWidgets('history dark', (tester) async {
@@ -103,12 +124,65 @@ void main() {
       'history_dark',
       _history(),
       brightness: Brightness.dark,
-      scrollBy: 120,
+    );
+  });
+
+  // Selecting a bucket paints a highlight behind the bar, which is easy to get
+  // wrong: a full-slot grey wash reads as a rendering artefact rather than a
+  // selection, so the selected state is checked on its own.
+  testWidgets('history bar selected', (tester) async {
+    await capture(
+      tester,
+      'history_bar_selected',
+      _history(),
+      brightness: Brightness.dark,
+      tapInside: const ValueKey('period-profit-plot'),
+      // Monday, the first of seven buckets.
+      tapAtFraction: 1 / 14,
+    );
+  });
+
+  // The line view has its own geometry — a curve, a gradient fill and the
+  // value axis behind both — so it cannot be signed off from the bar golden.
+  testWidgets('history line', (tester) async {
+    await capture(
+      tester,
+      'history_line',
+      _history(),
+      tap: const ValueKey('chart-style-line'),
+    );
+  });
+
+  // Thirty-one bars in the width of seven is the geometry most likely to
+  // collide, so it gets its own capture.
+  testWidgets('history month', (tester) async {
+    await capture(
+      tester,
+      'history_month',
+      _history(),
+      tap: const ValueKey('period-month'),
+      scrollBy: 300,
+    );
+  });
+
+  // The cost split and the day-grouped shift list both live below the fold, so
+  // neither is covered by the captures above.
+  testWidgets('history cost breakdown', (tester) async {
+    await capture(tester, 'history_breakdown', _history(), scrollBy: 620);
+  });
+
+  testWidgets('history shift list', (tester) async {
+    await capture(
+      tester,
+      'history_shifts',
+      _history(),
+      brightness: Brightness.dark,
+      scrollBy: 1750,
     );
   });
 
   testWidgets('earnings dna light', (tester) async {
-    await capture(tester, 'dna_light', _history(), scrollBy: 640);
+    await capture(tester, 'dna_light', _history(), scrollBy: 900);
   });
 
   testWidgets('freedom ring light', (tester) async {
@@ -133,7 +207,6 @@ void main() {
         shifts: _seed(),
         dailyGoal: 250,
         onAddShift: () {},
-        onConnectAccounts: () {},
         onDailyGoalChanged: (_) {},
         onStartDriving: () {},
       ),
@@ -149,13 +222,14 @@ void main() {
         shifts: _seed(),
         dailyGoal: 250,
         onAddShift: () {},
-        onConnectAccounts: () {},
         onDailyGoalChanged: (_) {},
         onStartDriving: () {},
         onEndShift: () async {},
+        onPauseDriving: () async {},
+        onResumeDriving: () async {},
         // Frozen so the golden is deterministic and the tree can settle.
         drivingRefreshInterval: null,
-        drivingSession: DrivingSession(
+        drivingSession: DrivingSession.single(
           id: 'preview',
           startedAt: DateTime.now().subtract(
             const Duration(hours: 1, minutes: 43, seconds: 17),
@@ -163,6 +237,84 @@ void main() {
           platform: WorkPlatform.uber,
           distanceMeters: 61800, // ~38.4 miles
           vehicleCostPerMile: .35,
+        ),
+      ),
+    );
+  });
+
+  /// A shift running two apps, in dark mode.
+  ///
+  /// Dark is where the app tiles are hardest to read: several brand marks are
+  /// near-black discs, and on a dark card they can disappear into it entirely.
+  /// This is the case that has to keep being checked by eye.
+  testWidgets('today driving multi app dark', (tester) async {
+    await capture(
+      tester,
+      'today_driving_multi_app_dark',
+      TodayScreen(
+        driverName: 'Ahmed',
+        shifts: _seed(),
+        dailyGoal: 250,
+        onAddShift: () {},
+        onDailyGoalChanged: (_) {},
+        onStartDriving: () {},
+        onEndShift: () async {},
+        onPauseDriving: () async {},
+        onResumeDriving: () async {},
+        // Both wired so the tiles render removable, with the add control
+        // alongside them.
+        onAddDrivingPlatform: () async {},
+        onRemoveDrivingPlatform: (_) async {},
+        drivingRefreshInterval: null,
+        drivingSession: DrivingSession(
+          id: 'preview',
+          startedAt: DateTime.now().subtract(
+            const Duration(hours: 1, minutes: 43, seconds: 17),
+          ),
+          platformSpans: [
+            PlatformSpan(
+              platform: WorkPlatform.uber,
+              from: DateTime.now().subtract(const Duration(hours: 1)),
+            ),
+            PlatformSpan(
+              platform: WorkPlatform.lyft,
+              from: DateTime.now().subtract(const Duration(minutes: 30)),
+            ),
+          ],
+          distanceMeters: 61800,
+          vehicleCostPerMile: .35,
+        ),
+      ),
+      brightness: Brightness.dark,
+    );
+  });
+
+  testWidgets('today driving session paused', (tester) async {
+    await capture(
+      tester,
+      'today_driving_paused',
+      TodayScreen(
+        driverName: 'Ahmed',
+        shifts: _seed(),
+        dailyGoal: 250,
+        onAddShift: () {},
+        onDailyGoalChanged: (_) {},
+        onStartDriving: () {},
+        onEndShift: () async {},
+        onPauseDriving: () async {},
+        onResumeDriving: () async {},
+        drivingRefreshInterval: null,
+        drivingSession: DrivingSession.single(
+          id: 'preview',
+          startedAt: DateTime.now().subtract(
+            const Duration(hours: 2, minutes: 26, seconds: 17),
+          ),
+          platform: WorkPlatform.uber,
+          distanceMeters: 61800,
+          vehicleCostPerMile: .35,
+          // Long enough to be carrying the warning, so the golden covers the
+          // loudest form of the paused card rather than its quietest.
+          pausedAt: DateTime.now().subtract(const Duration(minutes: 43)),
         ),
       ),
     );
@@ -178,6 +330,15 @@ void main() {
       'today_profit_dark',
       _today(losing: false),
       brightness: Brightness.dark,
+    );
+  });
+
+  testWidgets('admin dashboard light', (tester) async {
+    await capture(
+      tester,
+      'admin_dashboard_light',
+      AdminDashboardScreen(repository: _PreviewAdminRepository()),
+      size: const Size(430, 932),
     );
   });
 }
@@ -207,11 +368,57 @@ Widget _today({required bool losing}) => TodayScreen(
   shifts: losing ? [_losingToday()] : _seed(),
   dailyGoal: 250,
   onAddShift: () {},
-  onConnectAccounts: () {},
   onDailyGoalChanged: (_) {},
 );
 
-Shift _losingToday() => Shift(
+class _PreviewAdminRepository implements AdminRepository {
+  @override
+  Future<bool> canAccessAdmin() async => true;
+
+  @override
+  Future<AdminOverview> loadOverview() async => const AdminOverview(
+    drivers: 128,
+    activeDrivers: 119,
+    shifts: 2846,
+    connectedAccounts: 74,
+    failedSyncs: 2,
+    profit30Days: 186420,
+  );
+
+  @override
+  Future<List<AdminUserSummary>> loadUsers({String query = ''}) async => [
+    AdminUserSummary(
+      id: 'one',
+      email: 'taylor@example.com',
+      driverName: 'Taylor',
+      createdAt: DateTime.utc(2026, 7, 2),
+      lastSignInAt: DateTime.utc(2026, 8, 14),
+      cloudAccessEnabled: true,
+      shiftCount: 84,
+      totalProfit: 9420,
+      workAccountCount: 2,
+    ),
+    AdminUserSummary(
+      id: 'two',
+      email: 'sam@example.com',
+      driverName: 'Sam',
+      createdAt: DateTime.utc(2026, 7, 18),
+      lastSignInAt: DateTime.utc(2026, 8, 12),
+      cloudAccessEnabled: false,
+      shiftCount: 31,
+      totalProfit: 3180,
+      workAccountCount: 1,
+    ),
+  ];
+
+  @override
+  Future<void> setCloudAccess({
+    required String userId,
+    required bool enabled,
+  }) async {}
+}
+
+Shift _losingToday() => Shift.single(
   id: 'losing-today',
   platform: WorkPlatform.doorDash,
   gross: 60,
@@ -240,7 +447,7 @@ List<Shift> _seed() {
     double hours,
     double miles,
     double expenses,
-  ) => Shift(
+  ) => Shift.single(
     id: id,
     platform: platform,
     gross: gross,

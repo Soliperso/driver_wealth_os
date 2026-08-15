@@ -158,7 +158,7 @@ final class SupabaseEarningsRepository implements EarningsRepository {
     final completedAt =
         lastActivity ?? DateTime(day.year, day.month, day.day, 23, 59);
 
-    return Shift(
+    return Shift.single(
       id: importedShiftId(providerId, day),
       platform: platform,
       gross: _positive(row['gross']),
@@ -170,6 +170,7 @@ final class SupabaseEarningsRepository implements EarningsRepository {
       vehicleCostPerMile: vehicleCostPerMile,
       completedAt: completedAt,
       source: ShiftSource.imported,
+      costsReviewed: false,
     );
   }
 

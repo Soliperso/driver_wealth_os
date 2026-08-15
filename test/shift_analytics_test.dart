@@ -193,7 +193,7 @@ Shift _shift({
   required double directExpenses,
   required double miles,
   required double vehicleRate,
-}) => Shift(
+}) => Shift.single(
   id: id,
   platform: WorkPlatform.uber,
   gross: gross,

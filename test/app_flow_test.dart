@@ -20,7 +20,6 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('TRUE PROFIT'), findsOneWidget);
-    expect(find.text('Connect work accounts'), findsOneWidget);
     expect(find.text('Enter a shift manually'), findsOneWidget);
   });
 
@@ -32,12 +31,20 @@ void main() {
     await tester.tap(continueButton);
     await tester.pumpAndSettle();
 
-    // Start Driving is now the primary action, so the connect card sits below
-    // the fold on a short viewport. A plain drag is used rather than
-    // scrollUntilVisible, which stops as soon as the finder matches — and the
-    // ListView's cache extent has already built this widget off-screen.
-    final connectButton = find.text('Connect work accounts');
-    await tester.drag(find.byType(ListView), const Offset(0, -300));
+    // Work accounts live in Settings only; Today no longer advertises them.
+    await tester.tap(find.text('Settings'));
+    await tester.pumpAndSettle();
+    // Settings is a lazy ListView, so the card has to be scrolled to before it
+    // exists in the tree at all.
+    final connectButton = find.byKey(const ValueKey('settings-work-accounts'));
+    await tester.scrollUntilVisible(
+      connectButton,
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    // scrollUntilVisible stops as soon as the finder matches, and the
+    // ListView's cache extent builds the card while it is still off-screen.
+    await tester.ensureVisible(connectButton);
     await tester.pumpAndSettle();
     await tester.tap(connectButton);
     await tester.pumpAndSettle();
@@ -106,7 +113,7 @@ void main() {
   });
 
   testWidgets('daily goal changes to exceeded state', (tester) async {
-    final shift = Shift(
+    final shift = Shift.single(
       id: 'goal-test',
       platform: WorkPlatform.uber,
       gross: 310,
@@ -123,7 +130,6 @@ void main() {
           shifts: [shift],
           dailyGoal: 300,
           onAddShift: _doNothing,
-          onConnectAccounts: _doNothing,
           onDailyGoalChanged: _ignoreGoal,
         ),
       ),
@@ -145,7 +151,7 @@ void main() {
   });
 
   testWidgets('daily goal changes to reached state', (tester) async {
-    final shift = Shift(
+    final shift = Shift.single(
       id: 'goal-reached-test',
       platform: WorkPlatform.lyft,
       gross: 305,
@@ -162,7 +168,6 @@ void main() {
           shifts: [shift],
           dailyGoal: 300,
           onAddShift: _doNothing,
-          onConnectAccounts: _doNothing,
           onDailyGoalChanged: _ignoreGoal,
         ),
       ),
@@ -201,19 +206,19 @@ void main() {
     await tester.tap(find.text('Save to Today'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Connect work accounts'), findsOneWidget);
     await tester.scrollUntilVisible(find.text('Recent shifts'), 200);
     expect(find.text('Recent shifts'), findsOneWidget);
-    expect(
-      find.byWidgetPredicate(
-        (widget) =>
-            widget.key is ValueKey<String> &&
-            (widget.key! as ValueKey<String>).value.startsWith(
-              'shift-platform-logo-manual-',
-            ),
-      ),
-      findsOneWidget,
+    // Scrolled to on its own rather than assumed to be near the heading: the
+    // rows below it sit outside the viewport and are not built until reached.
+    final manualLogo = find.byWidgetPredicate(
+      (widget) =>
+          widget.key is ValueKey<String> &&
+          (widget.key! as ValueKey<String>).value.startsWith(
+            'shift-platform-logo-manual-',
+          ),
     );
+    await tester.scrollUntilVisible(manualLogo, 200);
+    expect(manualLogo, findsOneWidget);
   });
 }
 

@@ -41,14 +41,19 @@ class _AddShiftScreenState extends State<AddShiftScreen> {
   static const _maxFieldValue = 1000000.0;
 
   final _formKey = GlobalKey<FormState>();
-  late final TextEditingController _gross;
   late final TextEditingController _hours;
   late final TextEditingController _miles;
   late final TextEditingController _expenses;
   late final TextEditingController _vehicleRate;
-  late WorkPlatform _platform;
   late DateTime _completedAt;
   String? _completedAtError;
+
+  /// One money field per app the shift ran, in the order they were added.
+  ///
+  /// A tracked shift arrives with a line per app the session had live, all at
+  /// zero. Collapsing them into one field would throw away everything the
+  /// driver just told the app by switching Lyft on mid-shift.
+  final _lines = <_EarningsLine>[];
 
   /// A session-sourced shift is new, not an edit, even though it arrives with
   /// an initial shift attached.
@@ -58,9 +63,20 @@ class _AddShiftScreenState extends State<AddShiftScreen> {
   void initState() {
     super.initState();
     final shift = widget.initialShift;
-    _platform = shift?.platform ?? WorkPlatform.uber;
+    for (final line
+        in shift?.earnings.entries ??
+            const <MapEntry<WorkPlatform, double>>[]) {
+      _lines.add(
+        _EarningsLine(
+          platform: line.key,
+          initialGross: _initialNumber(line.value),
+        ),
+      );
+    }
+    if (_lines.isEmpty) {
+      _lines.add(_EarningsLine(platform: WorkPlatform.uber, initialGross: ''));
+    }
     _completedAt = shift?.completedAt ?? DateTime.now();
-    _gross = TextEditingController(text: _initialNumber(shift?.gross));
     _hours = TextEditingController(text: _initialNumber(shift?.hours));
     _miles = TextEditingController(text: _initialNumber(shift?.miles));
     _expenses = TextEditingController(
@@ -76,11 +92,11 @@ class _AddShiftScreenState extends State<AddShiftScreen> {
   @override
   void dispose() {
     for (final controller in [
-      _gross,
       _hours,
       _miles,
       _expenses,
       _vehicleRate,
+      for (final line in _lines) line.gross,
     ]) {
       controller.dispose();
     }
@@ -134,40 +150,6 @@ class _AddShiftScreenState extends State<AddShiftScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    DropdownButtonFormField<WorkPlatform>(
-                      initialValue: _platform,
-                      decoration: InputDecoration(
-                        labelText: 'Platform',
-                        prefixIcon: Padding(
-                          padding: const EdgeInsets.all(12),
-                          child: PlatformLogo(platform: _platform, size: 24),
-                        ),
-                      ),
-                      items: WorkPlatform.values
-                          .map(
-                            (platform) => DropdownMenuItem(
-                              value: platform,
-                              child: Row(
-                                children: [
-                                  PlatformLogo(platform: platform, size: 30),
-                                  const SizedBox(width: 10),
-                                  Text(platform.displayName),
-                                ],
-                              ),
-                            ),
-                          )
-                          .toList(),
-                      selectedItemBuilder: (context) => WorkPlatform.values
-                          .map(
-                            (platform) => Align(
-                              alignment: Alignment.centerLeft,
-                              child: Text(platform.displayName),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: (value) => setState(() => _platform = value!),
-                    ),
-                    const SizedBox(height: 14),
                     LayoutBuilder(
                       builder: (context, constraints) {
                         final dateField = _PickerField(
@@ -219,11 +201,7 @@ class _AddShiftScreenState extends State<AddShiftScreen> {
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                     const SizedBox(height: 14),
-                    _numberField(
-                      _gross,
-                      'Gross earnings',
-                      Icons.attach_money_rounded,
-                    ),
+                    ..._earningsFields(),
                     const SizedBox(height: 14),
                     LayoutBuilder(
                       builder: (context, constraints) {
@@ -291,14 +269,147 @@ class _AddShiftScreenState extends State<AddShiftScreen> {
     ),
   );
 
+  /// A platform picker and a money field per app, plus the controls to add and
+  /// remove apps.
+  ///
+  /// On a single-app shift this is the platform dropdown and gross field the
+  /// screen has always had, with one extra button underneath. The cost fields
+  /// stay outside it: fuel, tolls and vehicle wear were spent once by one car,
+  /// and offering to split them per app would invite a number nobody can know.
+  List<Widget> _earningsFields() {
+    final taken = {for (final line in _lines) line.platform};
+    return [
+      for (final (index, line) in _lines.indexed) ...[
+        if (index > 0) const SizedBox(height: 14),
+        Row(
+          children: [
+            Expanded(
+              child: DropdownButtonFormField<WorkPlatform>(
+                key: ValueKey('platform-field-$index'),
+                initialValue: line.platform,
+                decoration: InputDecoration(
+                  labelText: _lines.length > 1
+                      ? 'App ${index + 1}'
+                      : 'Platform',
+                  prefixIcon: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: PlatformLogo(platform: line.platform, size: 24),
+                  ),
+                ),
+                // Apps already on another line are left out, so the same app
+                // cannot be entered twice. Two lines sharing a platform would
+                // silently collapse into one and lose a whole app's earnings.
+                items: [
+                  for (final platform in WorkPlatform.values)
+                    if (platform == line.platform || !taken.contains(platform))
+                      DropdownMenuItem(
+                        value: platform,
+                        child: Row(
+                          children: [
+                            PlatformLogo(platform: platform, size: 30),
+                            const SizedBox(width: 10),
+                            Text(platform.displayName),
+                          ],
+                        ),
+                      ),
+                ],
+                selectedItemBuilder: (context) => [
+                  for (final platform in WorkPlatform.values)
+                    if (platform == line.platform || !taken.contains(platform))
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(platform.displayName),
+                      ),
+                ],
+                onChanged: (value) => setState(() => line.platform = value!),
+              ),
+            ),
+            if (_lines.length > 1) ...[
+              const SizedBox(width: 8),
+              IconButton(
+                key: ValueKey('remove-platform-$index'),
+                tooltip: 'Remove ${line.platform.displayName}',
+                onPressed: () => _removeLine(index),
+                icon: const Icon(Icons.close_rounded),
+              ),
+            ],
+          ],
+        ),
+        const SizedBox(height: 14),
+        _numberField(
+          line.gross,
+          _lines.length > 1
+              ? '${line.platform.displayName} earnings'
+              : 'Gross earnings',
+          Icons.attach_money_rounded,
+          key: ValueKey('gross-field-$index'),
+        ),
+      ],
+      const SizedBox(height: 10),
+      Align(
+        alignment: Alignment.centerLeft,
+        child: TextButton.icon(
+          key: const ValueKey('add-earnings-line'),
+          // Nothing left to add once every app is on a line.
+          onPressed: _lines.length >= WorkPlatform.values.length
+              ? null
+              : _addLine,
+          icon: const Icon(Icons.add_rounded, size: 18),
+          label: const Text('Add another app'),
+        ),
+      ),
+      // The total only earns its space once the figure is not simply the one
+      // number already on screen above it.
+      if (_lines.length > 1) ...[
+        const SizedBox(height: 4),
+        Text(
+          'Total gross ${Money.cents(_enteredGross())} across '
+          '${_lines.length} apps. Your hours, miles and costs below are '
+          'counted once for the whole shift.',
+          key: const ValueKey('earnings-total'),
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+      ],
+    ];
+  }
+
+  /// What the money fields currently add up to, ignoring anything unparseable —
+  /// this only feeds a helper line, and the validator is what refuses a bad
+  /// figure at save time.
+  double _enteredGross() => _lines.fold(
+    0.0,
+    (total, line) => total + (double.tryParse(line.gross.text) ?? 0),
+  );
+
+  void _addLine() {
+    final taken = {for (final line in _lines) line.platform};
+    final next = WorkPlatform.values.firstWhere(
+      (platform) => !taken.contains(platform),
+      orElse: () => WorkPlatform.other,
+    );
+    setState(() => _lines.add(_EarningsLine(platform: next, initialGross: '')));
+  }
+
+  void _removeLine(int index) {
+    final removed = _lines[index];
+    setState(() => _lines.removeAt(index));
+    // Disposed only after the rebuild that unmounts its field. Disposing a
+    // controller a live TextFormField still points at throws.
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => removed.gross.dispose(),
+    );
+  }
+
   TextFormField _numberField(
     TextEditingController controller,
     String label,
     IconData icon, {
+    Key? key,
     String? helperText,
     bool mustBePositive = false,
   }) {
     return TextFormField(
+      key: key,
       controller: controller,
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
       inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
@@ -383,14 +494,20 @@ class _AddShiftScreenState extends State<AddShiftScreen> {
       id:
           widget.initialShift?.id ??
           'manual-${DateTime.now().microsecondsSinceEpoch}',
-      platform: _platform,
-      gross: double.parse(_gross.text),
+      // Safe as a map even with several lines: the dropdowns cannot offer an
+      // app another line already holds, so no key can be overwritten here.
+      earnings: {
+        for (final line in _lines) line.platform: double.parse(line.gross.text),
+      },
       hours: double.parse(_hours.text),
       miles: double.parse(_miles.text),
       directExpenses: double.parse(_expenses.text),
       vehicleCostPerMile: double.parse(_vehicleRate.text),
       completedAt: _completedAt,
       source: widget.initialShift?.source ?? ShiftSource.manual,
+      // Reaching Calculate means the driver has seen and confirmed the cost
+      // field. Zero is a valid reviewed answer.
+      costsReviewed: true,
     );
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(
@@ -444,6 +561,18 @@ class _AddShiftScreenState extends State<AddShiftScreen> {
 /// The figures remain editable in the form below — GPS can be interrupted, and
 /// a driver who knows the tracking missed a stretch must be able to correct it
 /// rather than accept a number the app insists on.
+/// One app's money field on the entry form.
+///
+/// Mutable [platform] rather than a rebuilt record, so changing the dropdown
+/// does not drop the text the driver has already typed into that row.
+class _EarningsLine {
+  _EarningsLine({required this.platform, required String initialGross})
+    : gross = TextEditingController(text: initialGross);
+
+  WorkPlatform platform;
+  final TextEditingController gross;
+}
+
 class _TrackedSummary extends StatelessWidget {
   const _TrackedSummary({required this.shift});
 

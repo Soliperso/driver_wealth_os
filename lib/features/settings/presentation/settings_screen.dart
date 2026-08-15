@@ -17,6 +17,7 @@ class SettingsScreen extends StatefulWidget {
     this.accountEmail,
     this.onSignOut,
     this.onConnectAccounts,
+    this.onOpenAdmin,
   });
 
   final String driverName;
@@ -36,6 +37,10 @@ class SettingsScreen extends StatefulWidget {
   /// Work accounts were previously reachable only from a card on Today, which
   /// disappears once the driver has shifts.
   final VoidCallback? onConnectAccounts;
+
+  /// Present only after the backend confirms owner access. No role label is
+  /// shown for ordinary accounts.
+  final VoidCallback? onOpenAdmin;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -240,6 +245,39 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         onPressed: widget.onConnectAccounts,
                         icon: const Icon(Icons.link_rounded, size: 18),
                         label: const Text('Manage work accounts'),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              if (widget.onOpenAdmin != null) ...[
+                const SizedBox(height: 16),
+                GlassSurface(
+                  padding: const EdgeInsets.all(22),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        'Platform management',
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w800),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Monitor drivers, connected accounts, and import health.',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: colors.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      OutlinedButton.icon(
+                        key: const ValueKey('settings-open-admin'),
+                        onPressed: widget.onOpenAdmin,
+                        icon: const Icon(
+                          Icons.admin_panel_settings_outlined,
+                          size: 18,
+                        ),
+                        label: const Text('Open admin dashboard'),
                       ),
                     ],
                   ),

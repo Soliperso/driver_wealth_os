@@ -5,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   test('calculates true shift profitability', () {
-    final shift = Shift(
+    final shift = Shift.single(
       id: 'shift-1',
       platform: WorkPlatform.uber,
       gross: 300,
@@ -25,7 +25,7 @@ void main() {
   });
 
   test('rounds monetary results to cents', () {
-    final shift = Shift(
+    final shift = Shift.single(
       id: 'shift-rounding',
       platform: WorkPlatform.lyft,
       gross: 100,
@@ -42,7 +42,7 @@ void main() {
   });
 
   test('summary counts a shift id only once', () {
-    final shift = Shift(
+    final shift = Shift.single(
       id: 'same-source-record',
       platform: WorkPlatform.doorDash,
       gross: 200,

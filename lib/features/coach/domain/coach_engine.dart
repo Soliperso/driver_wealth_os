@@ -11,6 +11,9 @@ class CoachEngine {
     required double dailyGoal,
     FreedomGoal? freedomGoal,
     DateTime? now,
+    double hourlyFloor = 0,
+    int weekStartsOn = DateTime.monday,
+    int drivingDaysPerWeek = 0,
   }) {
     final unique = <String, Shift>{};
     for (final shift in shifts) {
@@ -31,9 +34,16 @@ class CoachEngine {
     final today = ShiftSummary.from(
       unique.values.where((shift) => shift.occurredOn(current)),
     );
-    final weekly = ShiftAnalytics.weekly(unique.values, now: current);
+    final weekly = ShiftAnalytics.weekly(
+      unique.values,
+      now: current,
+      weekStartsOn: weekStartsOn,
+    );
     final patterns = ShiftAnalytics.earningsPatterns(unique.values);
-    final leaks = ShiftAnalytics.moneyLeaks(unique.values);
+    final leaks = ShiftAnalytics.moneyLeaks(
+      unique.values,
+      hourlyFloor: hourlyFloor,
+    );
     final insights = <CoachInsight>[];
 
     if (today.shiftCount > 0) {
@@ -107,11 +117,19 @@ class CoachEngine {
     }
 
     if (weekly.summary.shiftCount > 0 && insights.length < 4) {
+      final weeklyTarget = dailyGoal * drivingDaysPerWeek;
+      // A week measured against nothing is a number; measured against the
+      // driver's own target it is a decision about whether to drive tomorrow.
+      final versusTarget = weeklyTarget <= 0
+          ? ''
+          : weekly.summary.netProfit >= weeklyTarget
+          ? ' That clears your \$${weeklyTarget.toStringAsFixed(0)} weekly target.'
+          : ' You are \$${(weeklyTarget - weekly.summary.netProfit).toStringAsFixed(2)} from your \$${weeklyTarget.toStringAsFixed(0)} weekly target.';
       insights.add(
         CoachInsight(
           title: 'This week at a glance',
           message:
-              '${weekly.summary.shiftCount} shifts produced \$${weekly.summary.netProfit.toStringAsFixed(2)} true profit at \$${weekly.summary.netPerHour.toStringAsFixed(2)} per hour.',
+              '${weekly.summary.shiftCount} shifts produced \$${weekly.summary.netProfit.toStringAsFixed(2)} true profit at \$${weekly.summary.netPerHour.toStringAsFixed(2)} per hour.$versusTarget',
           kind: CoachInsightKind.weekly,
         ),
       );

@@ -5,9 +5,11 @@ import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/animated_money.dart';
 import '../../../core/widgets/page_frame.dart';
 import '../../../core/widgets/soft_surfaces.dart';
+import '../../accounts/domain/work_platform.dart';
 import '../../accounts/presentation/platform_logo.dart';
 import '../../driving/domain/driving_session.dart';
 import '../../driving/presentation/driving_hero.dart';
+import '../../driving/presentation/shift_control.dart';
 import '../../shifts/domain/shift.dart';
 import '../../shifts/domain/shift_summary.dart';
 
@@ -18,7 +20,6 @@ class TodayScreen extends StatelessWidget {
     required this.shifts,
     required this.dailyGoal,
     required this.onAddShift,
-    required this.onConnectAccounts,
     required this.onDailyGoalChanged,
     this.onOpenShift,
     this.onOpenSettings,
@@ -28,7 +29,12 @@ class TodayScreen extends StatelessWidget {
     this.drivingTrackingInterrupted = false,
     this.onStartDriving,
     this.onEndShift,
+    this.onPauseDriving,
+    this.onResumeDriving,
+    this.onAutoEndShift,
     this.onUpgradeBackground,
+    this.onAddDrivingPlatform,
+    this.onRemoveDrivingPlatform,
     this.drivingRefreshInterval = const Duration(seconds: 1),
     this.pendingDraft,
     this.onResumeDraft,
@@ -40,7 +46,6 @@ class TodayScreen extends StatelessWidget {
   final List<Shift> shifts;
   final double dailyGoal;
   final VoidCallback onAddShift;
-  final VoidCallback onConnectAccounts;
   final ValueChanged<double> onDailyGoalChanged;
   final ValueChanged<Shift>? onOpenShift;
   final VoidCallback? onOpenSettings;
@@ -52,7 +57,14 @@ class TodayScreen extends StatelessWidget {
   final bool drivingTrackingInterrupted;
   final VoidCallback? onStartDriving;
   final Future<void> Function()? onEndShift;
+  final Future<void> Function()? onPauseDriving;
+  final Future<void> Function()? onResumeDriving;
+  final VoidCallback? onAutoEndShift;
   final Future<void> Function()? onUpgradeBackground;
+
+  /// Switches apps on and off without interrupting the running shift.
+  final Future<void> Function()? onAddDrivingPlatform;
+  final Future<void> Function(WorkPlatform platform)? onRemoveDrivingPlatform;
 
   /// Null freezes the live clock. See [DrivingHero.refreshInterval].
   final Duration? drivingRefreshInterval;
@@ -151,7 +163,12 @@ class TodayScreen extends StatelessWidget {
                   backgroundLimited: drivingBackgroundLimited,
                   trackingInterrupted: drivingTrackingInterrupted,
                   onEndShift: onEndShift ?? () async {},
+                  onPause: onPauseDriving,
+                  onResume: onResumeDriving,
+                  onAutoEnd: onAutoEndShift,
                   onUpgradeBackground: onUpgradeBackground,
+                  onAddPlatform: onAddDrivingPlatform,
+                  onRemovePlatform: onRemoveDrivingPlatform,
                   refreshInterval: drivingRefreshInterval,
                 )
               else ...[
@@ -171,18 +188,12 @@ class TodayScreen extends StatelessWidget {
                 else
                   Align(
                     alignment: Alignment.center,
-                    child: TextButton.icon(
+                    child: TextButton(
                       onPressed: onAddShift,
-                      icon: const Icon(Icons.edit_outlined, size: 18),
-                      label: const Text('Enter a shift manually'),
+                      child: const Text('Enter a shift manually'),
                     ),
                   ),
               ],
-              const SizedBox(height: 16),
-              _ConnectAccountsCard(
-                compact: summary.shiftCount > 0,
-                onConnect: onConnectAccounts,
-              ),
               if (summary.shiftCount > 0) ...[
                 const SizedBox(height: 16),
                 _PerformancePanel(
@@ -408,43 +419,34 @@ class _StartDrivingCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            children: [
-              const SoftIcon(Icons.play_arrow_rounded),
-              const SizedBox(width: Space.md),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Not driving',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: Space.xs),
-                    Text(
-                      'Track your hours and miles automatically while you work.',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: colors.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          Space.gapLg,
-          FilledButton(
-            key: const ValueKey('start-driving-button'),
-            onPressed: onStart,
-            child: const Text('START DRIVING'),
+          // The play glyph that used to sit in a SoftIcon here is now the
+          // button itself, so the heading no longer needs its own.
+          Text(
+            'Not driving',
+            textAlign: TextAlign.center,
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: Space.xs),
-          TextButton.icon(
+          Text(
+            'Track your hours and miles automatically while you work.',
+            textAlign: TextAlign.center,
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: colors.onSurfaceVariant),
+          ),
+          Space.gapXl,
+          Center(
+            child: ShiftControl(
+              state: ShiftControlState.idle,
+              onPressed: onStart,
+            ),
+          ),
+          Space.gapMd,
+          TextButton(
             onPressed: onEnterManually,
-            icon: const Icon(Icons.edit_outlined, size: 18),
-            label: const Text('Enter a shift manually'),
+            child: const Text('Enter a shift manually'),
           ),
         ],
       ),
@@ -550,64 +552,6 @@ class _StorageErrorBanner extends StatelessWidget {
                 context,
               ).textTheme.bodySmall?.copyWith(color: colors.onErrorContainer),
             ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ConnectAccountsCard extends StatelessWidget {
-  const _ConnectAccountsCard({required this.compact, required this.onConnect});
-
-  final bool compact;
-  final VoidCallback onConnect;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    return GlassSurface(
-      padding: EdgeInsets.all(compact ? 18 : 22),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SoftIcon(Icons.sync_rounded),
-              const SizedBox(width: 13),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      compact
-                          ? 'Work accounts'
-                          : 'Bring in earnings automatically',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 5),
-                    Text(
-                      compact
-                          ? 'Combine income from every platform you use.'
-                          : 'Connect Uber, Lyft, DoorDash and more. We’ll combine your income into one clear view.',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: colors.onSurfaceVariant,
-                        height: 1.42,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: compact ? 16 : 20),
-          FilledButton.icon(
-            onPressed: onConnect,
-            icon: const Icon(Icons.add_link_rounded, size: 20),
-            label: const Text('Connect work accounts'),
           ),
         ],
       ),
@@ -1046,17 +990,29 @@ class _SectionHeader extends StatelessWidget {
       Expanded(
         child: Text(
           'Recent shifts',
-          style: Theme.of(context).textTheme.titleLarge,
+          style: Theme.of(
+            context,
+          ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
         ),
       ),
-      FilledButton.icon(
+      OutlinedButton.icon(
         onPressed: onAddShift,
-        style: FilledButton.styleFrom(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: Theme.of(context).colorScheme.primary,
+          side: BorderSide(
+            color: Theme.of(
+              context,
+            ).colorScheme.outlineVariant.withValues(alpha: .7),
+          ),
+          minimumSize: const Size(0, 40),
+          padding: const EdgeInsets.symmetric(horizontal: 12),
           visualDensity: VisualDensity.compact,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
         ),
         icon: const Icon(Icons.add_rounded, size: 16),
-        label: const Text('Add shift'),
+        label: const Text('Add'),
       ),
     ],
   );
@@ -1073,53 +1029,109 @@ class _ShiftRow extends StatelessWidget {
     final colors = Theme.of(context).colorScheme;
     final isLoss = shift.netProfit < 0;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.only(bottom: 8),
       child: GlassSurface(
         padding: EdgeInsets.zero,
-        radius: 18,
+        radius: 14,
+        elevation: Elevation.flat,
         child: Material(
           type: MaterialType.transparency,
-          child: ListTile(
+          child: InkWell(
             onTap: onTap,
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 6,
-            ),
-            leading: PlatformLogo(
-              key: ValueKey('shift-platform-logo-${shift.id}'),
-              platform: shift.platform,
-              size: 42,
-            ),
-            title: Row(
-              children: [
-                Flexible(
-                  child: Text(
-                    shift.platform.displayName,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontWeight: FontWeight.w700),
+            borderRadius: BorderRadius.circular(14),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: Space.md,
+                vertical: Space.md,
+              ),
+              child: Row(
+                children: [
+                  PlatformLogo(
+                    key: ValueKey('shift-platform-logo-${shift.id}'),
+                    platform: shift.platform,
+                    size: 34,
                   ),
-                ),
-                if (shift.source == ShiftSource.imported) ...[
-                  const SizedBox(width: 8),
-                  const _ImportedChip(),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                shift.platform.displayName,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context).textTheme.bodyMedium
+                                    ?.copyWith(fontWeight: FontWeight.w700),
+                              ),
+                            ),
+                            if (shift.source == ShiftSource.imported) ...[
+                              const SizedBox(width: Space.sm),
+                              const _ImportedChip(),
+                            ],
+                          ],
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '${_dateLabel(context)} · '
+                          '${shift.hours.toStringAsFixed(1)} hrs · '
+                          '${shift.miles.toStringAsFixed(0)} mi',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(color: colors.onSurfaceVariant),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: Space.sm),
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        Money.cents(shift.netProfit),
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: isLoss ? colors.error : colors.primary,
+                          fontWeight: FontWeight.w800,
+                          fontFeatures: tabularFigures,
+                        ),
+                      ),
+                      Text(
+                        'Net',
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: colors.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (onTap != null) ...[
+                    const SizedBox(width: Space.xs),
+                    Icon(
+                      Icons.chevron_right_rounded,
+                      size: 18,
+                      color: colors.onSurfaceVariant,
+                    ),
+                  ],
                 ],
-              ],
-            ),
-            subtitle: Text(
-              '${shift.hours.toStringAsFixed(1)} hrs · ${shift.miles.toStringAsFixed(0)} miles',
-            ),
-            trailing: Text(
-              Money.cents(shift.netProfit),
-              style: TextStyle(
-                color: isLoss ? colors.error : colors.primary,
-                fontWeight: FontWeight.w800,
-                fontFeatures: tabularFigures,
               ),
             ),
           ),
         ),
       ),
     );
+  }
+
+  String _dateLabel(BuildContext context) {
+    final today = DateUtils.dateOnly(DateTime.now());
+    final completed = DateUtils.dateOnly(shift.completedAt);
+    if (completed == today) return 'Today';
+    if (completed == today.subtract(const Duration(days: 1))) {
+      return 'Yesterday';
+    }
+    return MaterialLocalizations.of(context).formatShortDate(shift.completedAt);
   }
 }
 

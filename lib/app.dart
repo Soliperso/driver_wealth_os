@@ -7,6 +7,7 @@ import 'core/persistence/app_store.dart';
 import 'core/sync/sync_service.dart';
 import 'core/theme/app_theme.dart';
 import 'features/accounts/application/earnings_repository.dart';
+import 'features/admin/application/admin_repository.dart';
 import 'features/auth/application/auth_gateway.dart';
 import 'features/auth/domain/auth_user.dart';
 import 'features/auth/presentation/sign_in_screen.dart';
@@ -28,6 +29,7 @@ class DriverWealthApp extends StatefulWidget {
     this.clock,
     this.authGateway,
     this.syncService,
+    this.adminRepository,
   });
 
   /// Injectable so the sync rules can be tested without a backend.
@@ -39,6 +41,10 @@ class DriverWealthApp extends StatefulWidget {
   /// and the app runs entirely on device. Injectable so tests can drive the
   /// signed-in and signed-out paths without a network.
   final AuthGateway? authGateway;
+
+  /// Injectable so owner access and dashboard behavior can be tested without
+  /// granting test accounts any backend privileges.
+  final AdminRepository? adminRepository;
 
   /// Injectable so tests can supply imported earnings without a backend.
   final EarningsRepository? earningsRepository;
@@ -78,6 +84,8 @@ class _DriverWealthAppState extends State<DriverWealthApp> {
   AuthGateway? _auth;
   AuthUser? _user;
   StreamSubscription<AuthUser?>? _authChanges;
+  AdminRepository? _admin;
+  var _adminAccess = false;
 
   late final SyncService _sync;
   DateTime? _syncCursor;
@@ -102,6 +110,9 @@ class _DriverWealthAppState extends State<DriverWealthApp> {
     _auth =
         widget.authGateway ??
         (BackendConfig.isConfigured ? SupabaseAuthGateway() : null);
+    _admin =
+        widget.adminRepository ??
+        (BackendConfig.isConfigured ? SupabaseAdminRepository() : null);
     _user = _auth?.currentUser;
     _sync =
         widget.syncService ??
@@ -111,7 +122,11 @@ class _DriverWealthAppState extends State<DriverWealthApp> {
     _authChanges = _auth?.changes.listen((user) {
       if (!mounted) return;
       final signedIn = _user == null && user != null;
-      setState(() => _user = user);
+      setState(() {
+        _user = user;
+        if (user == null) _adminAccess = false;
+      });
+      if (user != null) unawaited(_refreshAdminAccess());
       // Signing in is the moment a device's records acquire an owner. Anything
       // already here was entered before there was an account to attach it to,
       // so it is pushed rather than left stranded.
@@ -122,6 +137,7 @@ class _DriverWealthAppState extends State<DriverWealthApp> {
         (BackendConfig.isConfigured && BackendConfig.incomeSyncEnabled
             ? const SupabaseEarningsRepository()
             : const InertEarningsRepository());
+    if (_user != null) unawaited(_refreshAdminAccess());
     if (widget.store == null) {
       _loaded = true;
       _createDrivingController();
@@ -140,6 +156,14 @@ class _DriverWealthAppState extends State<DriverWealthApp> {
       persist: (session) async {
         _activeSession = session;
         _save();
+      },
+      // A shift that ended itself has real hours and miles in it, and it can
+      // end during start-up before any screen exists to catch it. Banking it
+      // here means the only way to lose it is to discard it on purpose.
+      // The guard matters: this can fire from the unawaited resume below,
+      // which may land after the widget is gone.
+      onAutoEnded: (draft) {
+        if (mounted) _changePendingDraft(draft);
       },
     );
     unawaited(_driving!.resumeIfActive());
@@ -194,6 +218,7 @@ class _DriverWealthAppState extends State<DriverWealthApp> {
               storageError: _storageError,
               accountEmail: _user?.email,
               onSignOut: _auth == null ? null : _signOut,
+              adminRepository: _adminAccess ? _admin : null,
             ),
     );
   }
@@ -332,6 +357,7 @@ class _DriverWealthAppState extends State<DriverWealthApp> {
         _shifts[index] = shift.copyWith(
           directExpenses: existing.directExpenses,
           vehicleCostPerMile: existing.vehicleCostPerMile,
+          costsReviewed: existing.costsReviewed,
         );
       }
       _shifts.sort((a, b) => b.completedAt.compareTo(a.completedAt));
@@ -398,8 +424,24 @@ class _DriverWealthAppState extends State<DriverWealthApp> {
       _deletedShiftIds.clear();
       _dirtyPreferences = false;
       _dirtyGoal = false;
+      _adminAccess = false;
     });
     _save();
+  }
+
+  Future<void> _refreshAdminAccess() async {
+    final repository = _admin;
+    final expectedUserId = _user?.id;
+    if (repository == null || expectedUserId == null) return;
+    var allowed = false;
+    try {
+      allowed = await repository.canAccessAdmin();
+    } catch (_) {
+      // A missing migration or an offline backend must fail closed.
+      allowed = false;
+    }
+    if (!mounted || _user?.id != expectedUserId) return;
+    setState(() => _adminAccess = allowed);
   }
 
   void _changePendingDraft(Shift? draft) {

@@ -15,7 +15,6 @@ void main() {
           shifts: [_losingShift()],
           dailyGoal: 250,
           onAddShift: _doNothing,
-          onConnectAccounts: _doNothing,
           onDailyGoalChanged: _ignoreGoal,
         ),
       ),
@@ -49,7 +48,6 @@ void main() {
           shifts: const [],
           dailyGoal: 250,
           onAddShift: _doNothing,
-          onConnectAccounts: _doNothing,
           onDailyGoalChanged: _ignoreGoal,
         ),
       ),
@@ -66,7 +64,7 @@ void main() {
   testWidgets('recent shifts show even when nothing was driven today', (
     tester,
   ) async {
-    final lastWeek = Shift(
+    final lastWeek = Shift.single(
       id: 'older-1',
       platform: WorkPlatform.lyft,
       gross: 200,
@@ -84,7 +82,6 @@ void main() {
           shifts: [lastWeek],
           dailyGoal: 250,
           onAddShift: _doNothing,
-          onConnectAccounts: _doNothing,
           onDailyGoalChanged: _ignoreGoal,
         ),
       ),
@@ -104,7 +101,7 @@ void main() {
   });
 }
 
-Shift _losingShift() => Shift(
+Shift _losingShift() => Shift.single(
   id: 'losing-1',
   platform: WorkPlatform.uber,
   gross: 50,

@@ -38,6 +38,11 @@ supabase/.env.local
 .env.*
 !.env.example
 
+# Golden-diff images written by a failing visual check. The goldens under
+# test/visual/output are committed on purpose; these are the throwaway
+# masterImage/testImage/diff triples from whichever run last failed.
+test/visual/failures/
+
 # Symbolication related
 app.*.symbols
 

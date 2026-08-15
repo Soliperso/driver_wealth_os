@@ -4,6 +4,7 @@ import 'package:flutter/material.dart' show ThemeMode;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../features/driving/domain/driving_session.dart';
+import '../../features/settings/domain/driving_costs.dart';
 import '../../features/shifts/domain/shift.dart';
 import '../../features/freedom/domain/freedom_goal.dart';
 
@@ -12,6 +13,12 @@ class AppSnapshot {
     this.driverName,
     this.dailyGoal = 250,
     this.vehicleCostPerMile = defaultVehicleCostPerMile,
+    this.energySource = EnergySource.gasoline,
+    this.fuelEfficiency = DrivingCosts.defaultFuelEfficiency,
+    this.fuelPrice = DrivingCosts.defaultFuelPrice,
+    this.hourlyFloor = defaultHourlyFloor,
+    this.weekStartsOn = DateTime.monday,
+    this.drivingDaysPerWeek = defaultDrivingDaysPerWeek,
     this.shifts = const [],
     this.freedomGoal,
     this.themeMode = ThemeMode.system,
@@ -27,14 +34,47 @@ class AppSnapshot {
   /// Rough national average for maintenance, tyres and depreciation. Used until
   /// the driver sets their own rate, and applied to imported shifts, which
   /// arrive with no cost data of any kind.
-  static const defaultVehicleCostPerMile = 0.30;
+  static const defaultVehicleCostPerMile =
+      DrivingCosts.defaultVehicleCostPerMile;
+
+  /// The pace the app used to call "healthy" for everyone. Keeping it as the
+  /// default means an existing driver who never opens the new field sees no
+  /// change in what Today and Coach tell them.
+  static const defaultHourlyFloor = 25.0;
+
+  static const defaultDrivingDaysPerWeek = 5;
 
   final String? driverName;
   final double dailyGoal;
   final double vehicleCostPerMile;
+  final EnergySource energySource;
+  final double fuelEfficiency;
+  final double fuelPrice;
+
+  /// The lowest hourly profit this driver considers worth the trip. Replaces a
+  /// hardcoded $25 that was the app's opinion rather than theirs.
+  final double hourlyFloor;
+
+  /// [DateTime.monday] or [DateTime.sunday] — pay weeks differ by platform, and
+  /// a chart that splits the driver's week in half is worse than no chart.
+  final int weekStartsOn;
+
+  final int drivingDaysPerWeek;
   final List<Shift> shifts;
   final FreedomGoal? freedomGoal;
   final ThemeMode themeMode;
+
+  /// The cost side of the preferences, bundled for the callers that price a
+  /// mile rather than edit one.
+  DrivingCosts get drivingCosts => DrivingCosts(
+    energySource: energySource,
+    fuelEfficiency: fuelEfficiency,
+    fuelPrice: fuelPrice,
+    vehicleCostPerMile: vehicleCostPerMile,
+  );
+
+  /// What a full working week at [dailyGoal] comes to.
+  double get weeklyGoal => (dailyGoal * drivingDaysPerWeek * 100).round() / 100;
 
   /// A driving session that was still running when the app was last alive.
   /// Persisted so an OS kill mid-shift cannot lose the start time.
@@ -83,6 +123,12 @@ class AppSnapshot {
     String? driverName,
     double? dailyGoal,
     double? vehicleCostPerMile,
+    EnergySource? energySource,
+    double? fuelEfficiency,
+    double? fuelPrice,
+    double? hourlyFloor,
+    int? weekStartsOn,
+    int? drivingDaysPerWeek,
     ThemeMode? themeMode,
     DateTime? syncCursor,
     Set<String>? dirtyShiftIds,
@@ -93,6 +139,12 @@ class AppSnapshot {
     driverName: driverName ?? this.driverName,
     dailyGoal: dailyGoal ?? this.dailyGoal,
     vehicleCostPerMile: vehicleCostPerMile ?? this.vehicleCostPerMile,
+    energySource: energySource ?? this.energySource,
+    fuelEfficiency: fuelEfficiency ?? this.fuelEfficiency,
+    fuelPrice: fuelPrice ?? this.fuelPrice,
+    hourlyFloor: hourlyFloor ?? this.hourlyFloor,
+    weekStartsOn: weekStartsOn ?? this.weekStartsOn,
+    drivingDaysPerWeek: drivingDaysPerWeek ?? this.drivingDaysPerWeek,
     shifts: shifts ?? this.shifts,
     freedomGoal: clearFreedomGoal ? null : (freedomGoal ?? this.freedomGoal),
     themeMode: themeMode ?? this.themeMode,
@@ -109,6 +161,12 @@ class AppSnapshot {
     'driverName': driverName,
     'dailyGoal': dailyGoal,
     'vehicleCostPerMile': vehicleCostPerMile,
+    'energySource': energySource.name,
+    'fuelEfficiency': fuelEfficiency,
+    'fuelPrice': fuelPrice,
+    'hourlyFloor': hourlyFloor,
+    'weekStartsOn': weekStartsOn,
+    'drivingDaysPerWeek': drivingDaysPerWeek,
     'shifts': shifts.map((shift) => shift.toJson()).toList(),
     'freedomGoal': freedomGoal?.toJson(),
     'themeMode': themeMode.name,
@@ -173,6 +231,36 @@ class AppSnapshot {
       vehicleCostPerMile: vehicleRate >= 0 && vehicleRate <= 100
           ? vehicleRate
           : defaultVehicleCostPerMile,
+      energySource: EnergySource.fromName(json['energySource']),
+      fuelEfficiency: _boundedDouble(
+        json['fuelEfficiency'],
+        fallback: DrivingCosts.defaultFuelEfficiency,
+        min: 0,
+        max: 500,
+        allowMin: false,
+      ),
+      fuelPrice: _boundedDouble(
+        json['fuelPrice'],
+        fallback: DrivingCosts.defaultFuelPrice,
+        min: 0,
+        max: 100,
+      ),
+      hourlyFloor: _boundedDouble(
+        json['hourlyFloor'],
+        fallback: defaultHourlyFloor,
+        min: 0,
+        max: 10000,
+      ),
+      // Anything but Monday or Sunday would silently rotate every weekly chart
+      // in the app, so an unknown value falls back rather than being clamped.
+      weekStartsOn: switch (json['weekStartsOn']) {
+        DateTime.sunday => DateTime.sunday,
+        _ => DateTime.monday,
+      },
+      drivingDaysPerWeek: switch (json['drivingDaysPerWeek']) {
+        final int days when days >= 1 && days <= 7 => days,
+        _ => defaultDrivingDaysPerWeek,
+      },
       themeMode: ThemeMode.values.firstWhere(
         (mode) => mode.name == json['themeMode'],
         orElse: () => ThemeMode.system,
@@ -196,6 +284,24 @@ class AppSnapshot {
       dirtyPreferences: json['dirtyPreferences'] == true,
       dirtyGoal: json['dirtyGoal'] == true,
     );
+  }
+
+  /// A stored number that has drifted outside what the UI can produce — a
+  /// hand-edited backup, a future version's wider range — falls back to the
+  /// default rather than being clamped into a value the driver never chose.
+  static double _boundedDouble(
+    Object? value, {
+    required double fallback,
+    required double min,
+    required double max,
+    bool allowMin = true,
+  }) {
+    if (value is! num) return fallback;
+    final parsed = value.toDouble();
+    if (!parsed.isFinite) return fallback;
+    if (parsed > max) return fallback;
+    if (allowMin ? parsed < min : parsed <= min) return fallback;
+    return parsed;
   }
 
   static Set<String> _stringSet(Object? value) => switch (value) {

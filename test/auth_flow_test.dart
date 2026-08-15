@@ -14,7 +14,7 @@ import 'support/fake_location_tracker.dart';
 /// survive a reinstall. An anonymous session could not be recovered by anyone,
 /// so a driver's whole history depended on one device's storage.
 void main() {
-  Shift shift(String id) => Shift(
+  Shift shift(String id) => Shift.single(
     id: id,
     platform: WorkPlatform.uber,
     gross: 200,

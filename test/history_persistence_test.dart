@@ -77,11 +77,11 @@ void main() {
     await tester.tap(find.text('History'));
     await tester.pumpAndSettle();
 
-    // The weekly chart and DNA grid sit above the list, so the shift rows are
-    // below the fold and a lazy ListView has not built them yet.
+    // With one shift, History stays simple and goes straight from the summary
+    // to the selected period's rows.
     final historyRow = find.byKey(const ValueKey('history-shift-persisted-1'));
     await tester.scrollUntilVisible(historyRow, 200);
-    expect(find.text('All shifts'), findsOneWidget);
+    expect(find.text('Shifts this week'), findsOneWidget);
     expect(historyRow, findsOneWidget);
     await Scrollable.ensureVisible(tester.element(historyRow), alignment: .5);
     await tester.pumpAndSettle();
@@ -128,7 +128,7 @@ FreedomGoal _goal() => FreedomGoal(
   createdAt: DateTime(2026, 1, 1),
 );
 
-Shift _shift() => Shift(
+Shift _shift() => Shift.single(
   id: 'persisted-1',
   platform: WorkPlatform.uber,
   gross: 300,

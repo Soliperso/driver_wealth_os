@@ -61,7 +61,11 @@ class _ShiftDetailScreenState extends State<ShiftDetailScreen> {
                         ),
                         const SizedBox(height: 3),
                         Text(
-                          _date(_shift.completedAt),
+                          // The history row now carries only time and
+                          // duration, so this is where distance has to land.
+                          '${_date(_shift.completedAt)} · '
+                          '${Money.hours(_shift.hours)} · '
+                          '${_shift.miles.toStringAsFixed(0)} mi',
                           style: Theme.of(context).textTheme.bodySmall,
                         ),
                       ],
