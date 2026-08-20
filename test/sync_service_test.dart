@@ -47,7 +47,7 @@ void main() {
     miles: 100,
     directExpenses: 20,
     vehicleCostPerMile: .20,
-    completedAt: DateTime(2026, 8, 11, 18),
+    completedAt: DateTime.now().subtract(const Duration(days: 1)),
   );
 
   Map<String, Object?> row(
@@ -269,7 +269,11 @@ void main() {
       // The weekly chart and DNA grid sit above the list, so the row is below
       // the fold and a lazy ListView has not built it yet.
       final historyRow = find.byKey(const ValueKey('history-shift-a'));
-      await tester.scrollUntilVisible(historyRow, 200);
+      await tester.scrollUntilVisible(
+        historyRow,
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
       await Scrollable.ensureVisible(tester.element(historyRow), alignment: .5);
       await tester.pumpAndSettle();
       await tester.tap(historyRow);
@@ -319,17 +323,13 @@ void main() {
 
       await tester.tap(find.byIcon(Icons.settings_outlined));
       await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('settings-daily-goal')));
+      await tester.pumpAndSettle();
       await tester.enterText(
-        find.byKey(const ValueKey('settings-daily-goal')),
+        find.byKey(const ValueKey('settings-daily-goal-field')),
         '400',
       );
-      await tester.scrollUntilVisible(
-        find.byKey(const ValueKey('settings-save')),
-        200,
-        scrollable: find.byType(Scrollable).first,
-      );
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('settings-save')));
+      await tester.tap(find.byKey(const ValueKey('settings-editor-done')));
       await tester.pumpAndSettle();
 
       // Offline is the normal case for a driver, not an error state. The

@@ -17,6 +17,8 @@ import 'features/driving/domain/driving_session.dart';
 import 'features/onboarding/presentation/onboarding_screen.dart';
 import 'features/freedom/domain/freedom_goal.dart';
 import 'features/shifts/domain/shift.dart';
+import 'features/settings/domain/driving_costs.dart';
+import 'features/settings/domain/distance_unit.dart';
 import 'features/today/presentation/app_shell.dart';
 
 class DriverWealthApp extends StatefulWidget {
@@ -75,6 +77,13 @@ class _DriverWealthAppState extends State<DriverWealthApp> {
   final List<Shift> _shifts = [];
   double _dailyGoal = 250;
   double _vehicleCostPerMile = AppSnapshot.defaultVehicleCostPerMile;
+  EnergySource _energySource = EnergySource.gasoline;
+  double _fuelEfficiency = DrivingCosts.defaultFuelEfficiency;
+  double _fuelPrice = DrivingCosts.defaultFuelPrice;
+  double _hourlyFloor = AppSnapshot.defaultHourlyFloor;
+  int _weekStartsOn = DateTime.monday;
+  int _drivingDaysPerWeek = AppSnapshot.defaultDrivingDaysPerWeek;
+  DistanceUnit _distanceUnit = DistanceUnit.miles;
   ThemeMode _themeMode = ThemeMode.system;
   DrivingSession? _activeSession;
   FreedomGoal? _freedomGoal;
@@ -199,12 +208,24 @@ class _DriverWealthAppState extends State<DriverWealthApp> {
               shifts: _shifts,
               dailyGoal: _dailyGoal,
               vehicleCostPerMile: _vehicleCostPerMile,
+              drivingCosts: _drivingCosts,
+              hourlyFloor: _hourlyFloor,
+              weekStartsOn: _weekStartsOn,
+              drivingDaysPerWeek: _drivingDaysPerWeek,
+              distanceUnit: _distanceUnit,
               freedomGoal: _freedomGoal,
               onShiftAdded: _addShift,
               onShiftUpdated: _updateShift,
               onShiftDeleted: _deleteShift,
               onDailyGoalChanged: _changeDailyGoal,
               onVehicleCostPerMileChanged: _changeVehicleCostPerMile,
+              onEnergySourceChanged: _changeEnergySource,
+              onFuelEfficiencyChanged: _changeFuelEfficiency,
+              onFuelPriceChanged: _changeFuelPrice,
+              onHourlyFloorChanged: _changeHourlyFloor,
+              onWeekStartsOnChanged: _changeWeekStartsOn,
+              onDrivingDaysPerWeekChanged: _changeDrivingDaysPerWeek,
+              onDistanceUnitChanged: _changeDistanceUnit,
               onDriverNameChanged: _changeDriverName,
               themeMode: _themeMode,
               onThemeModeChanged: _changeThemeMode,
@@ -230,6 +251,13 @@ class _DriverWealthAppState extends State<DriverWealthApp> {
       _driverName = snapshot.driverName;
       _dailyGoal = snapshot.dailyGoal;
       _vehicleCostPerMile = snapshot.vehicleCostPerMile;
+      _energySource = snapshot.energySource;
+      _fuelEfficiency = snapshot.fuelEfficiency;
+      _fuelPrice = snapshot.fuelPrice;
+      _hourlyFloor = snapshot.hourlyFloor;
+      _weekStartsOn = snapshot.weekStartsOn;
+      _drivingDaysPerWeek = snapshot.drivingDaysPerWeek;
+      _distanceUnit = snapshot.distanceUnit;
       _themeMode = snapshot.themeMode;
       _activeSession = snapshot.activeSession;
       _freedomGoal = snapshot.freedomGoal;
@@ -296,6 +324,14 @@ class _DriverWealthAppState extends State<DriverWealthApp> {
       _driverName = snapshot.driverName;
       _dailyGoal = snapshot.dailyGoal;
       _vehicleCostPerMile = snapshot.vehicleCostPerMile;
+      _energySource = snapshot.energySource;
+      _fuelEfficiency = snapshot.fuelEfficiency;
+      _fuelPrice = snapshot.fuelPrice;
+      _hourlyFloor = snapshot.hourlyFloor;
+      _weekStartsOn = snapshot.weekStartsOn;
+      _drivingDaysPerWeek = snapshot.drivingDaysPerWeek;
+      _distanceUnit = snapshot.distanceUnit;
+      _themeMode = snapshot.themeMode;
       _freedomGoal = snapshot.freedomGoal;
       _syncCursor = snapshot.syncCursor;
       _shifts
@@ -417,6 +453,14 @@ class _DriverWealthAppState extends State<DriverWealthApp> {
       _syncStatus = null;
       _dailyGoal = 250;
       _vehicleCostPerMile = AppSnapshot.defaultVehicleCostPerMile;
+      _energySource = EnergySource.gasoline;
+      _fuelEfficiency = DrivingCosts.defaultFuelEfficiency;
+      _fuelPrice = DrivingCosts.defaultFuelPrice;
+      _hourlyFloor = AppSnapshot.defaultHourlyFloor;
+      _weekStartsOn = DateTime.monday;
+      _drivingDaysPerWeek = AppSnapshot.defaultDrivingDaysPerWeek;
+      _distanceUnit = DistanceUnit.miles;
+      _themeMode = ThemeMode.system;
       // The next account to sign in here starts from a clean slate: a leftover
       // cursor would make its first pull skip everything already on the server.
       _syncCursor = null;
@@ -490,6 +534,69 @@ class _DriverWealthAppState extends State<DriverWealthApp> {
     _saveAndSync();
   }
 
+  void _changeEnergySource(EnergySource source) {
+    setState(() {
+      _energySource = source;
+      // A gas MPG or per-gallon price is not meaningful for an EV (and vice
+      // versa), so switching the energy source starts from a realistic value
+      // for that source instead of silently reinterpreting the old number.
+      _fuelEfficiency = source.defaultEfficiency;
+      _fuelPrice = source.defaultPrice;
+      _dirtyPreferences = true;
+    });
+    _saveAndSync();
+  }
+
+  void _changeFuelEfficiency(double efficiency) {
+    setState(() {
+      _fuelEfficiency = (efficiency * 100).round() / 100;
+      _dirtyPreferences = true;
+    });
+    _saveAndSync();
+  }
+
+  void _changeFuelPrice(double price) {
+    setState(() {
+      _fuelPrice = (price * 1000).round() / 1000;
+      _dirtyPreferences = true;
+    });
+    _saveAndSync();
+  }
+
+  void _changeHourlyFloor(double rate) {
+    setState(() {
+      _hourlyFloor = (rate * 100).round() / 100;
+      _dirtyPreferences = true;
+    });
+    _saveAndSync();
+  }
+
+  void _changeWeekStartsOn(int weekday) {
+    if (weekday != DateTime.monday && weekday != DateTime.sunday) return;
+    setState(() {
+      _weekStartsOn = weekday;
+      _dirtyPreferences = true;
+    });
+    _saveAndSync();
+  }
+
+  void _changeDrivingDaysPerWeek(int days) {
+    if (days < 1 || days > 7) return;
+    setState(() {
+      _drivingDaysPerWeek = days;
+      _dirtyPreferences = true;
+    });
+    _saveAndSync();
+  }
+
+  void _changeDistanceUnit(DistanceUnit unit) {
+    setState(() {
+      _distanceUnit = unit;
+      _dirtyPreferences = true;
+    });
+    _saveAndSync();
+  }
+
   void _changeThemeMode(ThemeMode mode) {
     setState(() {
       _themeMode = mode;
@@ -520,6 +627,13 @@ class _DriverWealthAppState extends State<DriverWealthApp> {
     driverName: _driverName,
     dailyGoal: _dailyGoal,
     vehicleCostPerMile: _vehicleCostPerMile,
+    energySource: _energySource,
+    fuelEfficiency: _fuelEfficiency,
+    fuelPrice: _fuelPrice,
+    hourlyFloor: _hourlyFloor,
+    weekStartsOn: _weekStartsOn,
+    drivingDaysPerWeek: _drivingDaysPerWeek,
+    distanceUnit: _distanceUnit,
     themeMode: _themeMode,
     activeSession: _activeSession,
     shifts: List.unmodifiable(_shifts),
@@ -530,6 +644,13 @@ class _DriverWealthAppState extends State<DriverWealthApp> {
     deletedShiftIds: Set.unmodifiable(_deletedShiftIds),
     dirtyPreferences: _dirtyPreferences,
     dirtyGoal: _dirtyGoal,
+  );
+
+  DrivingCosts get _drivingCosts => DrivingCosts(
+    energySource: _energySource,
+    fuelEfficiency: _fuelEfficiency,
+    fuelPrice: _fuelPrice,
+    vehicleCostPerMile: _vehicleCostPerMile,
   );
 
   /// Writes to the device, then reconciles with the account in the background.

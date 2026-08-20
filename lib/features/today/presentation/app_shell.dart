@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../../core/config/backend_config.dart';
 import '../../../core/format/money.dart';
@@ -23,6 +25,10 @@ import '../../freedom/domain/freedom_goal.dart';
 import '../../freedom/presentation/freedom_screen.dart';
 import '../../history/presentation/history_screen.dart';
 import '../../history/presentation/shift_detail_screen.dart';
+import '../../settings/domain/driving_costs.dart';
+import '../../settings/domain/distance_unit.dart';
+import '../../settings/application/shift_export.dart';
+import '../../settings/presentation/privacy_security_screen.dart';
 import '../../settings/presentation/settings_screen.dart';
 import '../../shifts/domain/shift.dart';
 import '../../shifts/presentation/add_shift_screen.dart';
@@ -35,12 +41,24 @@ class AppShell extends StatefulWidget {
     required this.shifts,
     required this.dailyGoal,
     required this.vehicleCostPerMile,
+    required this.drivingCosts,
+    required this.hourlyFloor,
+    required this.weekStartsOn,
+    required this.drivingDaysPerWeek,
+    required this.distanceUnit,
     required this.freedomGoal,
     required this.onShiftAdded,
     required this.onShiftUpdated,
     required this.onShiftDeleted,
     required this.onDailyGoalChanged,
     required this.onVehicleCostPerMileChanged,
+    required this.onEnergySourceChanged,
+    required this.onFuelEfficiencyChanged,
+    required this.onFuelPriceChanged,
+    required this.onHourlyFloorChanged,
+    required this.onWeekStartsOnChanged,
+    required this.onDrivingDaysPerWeekChanged,
+    required this.onDistanceUnitChanged,
     required this.onDriverNameChanged,
     required this.onFreedomGoalChanged,
     required this.themeMode,
@@ -60,12 +78,24 @@ class AppShell extends StatefulWidget {
   final List<Shift> shifts;
   final double dailyGoal;
   final double vehicleCostPerMile;
+  final DrivingCosts drivingCosts;
+  final double hourlyFloor;
+  final int weekStartsOn;
+  final int drivingDaysPerWeek;
+  final DistanceUnit distanceUnit;
   final FreedomGoal? freedomGoal;
   final ValueChanged<Shift> onShiftAdded;
   final ValueChanged<Shift> onShiftUpdated;
   final ValueChanged<String> onShiftDeleted;
   final ValueChanged<double> onDailyGoalChanged;
   final ValueChanged<double> onVehicleCostPerMileChanged;
+  final ValueChanged<EnergySource> onEnergySourceChanged;
+  final ValueChanged<double> onFuelEfficiencyChanged;
+  final ValueChanged<double> onFuelPriceChanged;
+  final ValueChanged<double> onHourlyFloorChanged;
+  final ValueChanged<int> onWeekStartsOnChanged;
+  final ValueChanged<int> onDrivingDaysPerWeekChanged;
+  final ValueChanged<DistanceUnit> onDistanceUnitChanged;
   final ValueChanged<String> onDriverNameChanged;
   final ValueChanged<FreedomGoal?> onFreedomGoalChanged;
   final ThemeMode themeMode;
@@ -376,19 +406,35 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         shifts: widget.shifts,
         dailyGoal: widget.dailyGoal,
         freedomGoal: widget.freedomGoal,
+        hourlyFloor: widget.hourlyFloor,
+        weekStartsOn: widget.weekStartsOn,
+        drivingDaysPerWeek: widget.drivingDaysPerWeek,
       ),
       _ => SettingsScreen(
         driverName: widget.driverName,
         dailyGoal: widget.dailyGoal,
-        vehicleCostPerMile: widget.vehicleCostPerMile,
+        drivingCosts: widget.drivingCosts,
+        hourlyFloor: widget.hourlyFloor,
+        weekStartsOn: widget.weekStartsOn,
+        drivingDaysPerWeek: widget.drivingDaysPerWeek,
+        distanceUnit: widget.distanceUnit,
         onDriverNameChanged: widget.onDriverNameChanged,
         onDailyGoalChanged: widget.onDailyGoalChanged,
         onVehicleCostPerMileChanged: widget.onVehicleCostPerMileChanged,
+        onEnergySourceChanged: widget.onEnergySourceChanged,
+        onFuelEfficiencyChanged: widget.onFuelEfficiencyChanged,
+        onFuelPriceChanged: widget.onFuelPriceChanged,
+        onHourlyFloorChanged: widget.onHourlyFloorChanged,
+        onWeekStartsOnChanged: widget.onWeekStartsOnChanged,
+        onDrivingDaysPerWeekChanged: widget.onDrivingDaysPerWeekChanged,
+        onDistanceUnitChanged: widget.onDistanceUnitChanged,
         themeMode: widget.themeMode,
         onThemeModeChanged: widget.onThemeModeChanged,
         accountEmail: widget.accountEmail,
         onSignOut: widget.onSignOut == null ? null : _confirmSignOut,
         onConnectAccounts: _connectAccounts,
+        onExportData: _exportData,
+        onOpenPrivacy: _openPrivacy,
         onOpenAdmin: widget.adminRepository == null ? null : _openAdmin,
       ),
     };
@@ -776,4 +822,40 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     // in as soon as the driver comes back from the connection flow.
     await widget.onRefreshEarnings?.call();
   }
+
+  Future<void> _exportData() async {
+    if (widget.shifts.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Add a shift before exporting data.')),
+      );
+      return;
+    }
+    final now = DateTime.now();
+    final date =
+        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    final renderBox = context.findRenderObject();
+    final origin = renderBox is RenderBox
+        ? renderBox.localToGlobal(Offset.zero) & renderBox.size
+        : null;
+    await SharePlus.instance.share(
+      ShareParams(
+        subject: 'Driver Wealth driving data',
+        text: 'Your Driver Wealth shift export.',
+        files: [
+          XFile.fromData(
+            utf8.encode(ShiftExport.csv(widget.shifts)),
+            mimeType: 'text/csv',
+          ),
+        ],
+        fileNameOverrides: ['driver-wealth-$date.csv'],
+        sharePositionOrigin: origin,
+      ),
+    );
+  }
+
+  Future<void> _openPrivacy() => Navigator.of(context).push(
+    MaterialPageRoute(
+      builder: (_) => PrivacySecurityScreen(accountEmail: widget.accountEmail),
+    ),
+  );
 }

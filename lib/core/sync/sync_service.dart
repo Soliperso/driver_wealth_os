@@ -1,7 +1,10 @@
+import 'package:flutter/material.dart' show ThemeMode;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../features/accounts/domain/work_platform.dart';
 import '../../features/freedom/domain/freedom_goal.dart';
+import '../../features/settings/domain/distance_unit.dart';
+import '../../features/settings/domain/driving_costs.dart';
 import '../../features/shifts/domain/shift.dart';
 import '../persistence/app_store.dart';
 
@@ -121,6 +124,13 @@ final class SupabaseSyncService implements SyncService {
         'driver_name': local.driverName,
         'daily_goal': local.dailyGoal,
         'vehicle_cost_per_mile': local.vehicleCostPerMile,
+        'energy_source': local.energySource.name,
+        'fuel_efficiency': local.fuelEfficiency,
+        'fuel_price': local.fuelPrice,
+        'hourly_floor': local.hourlyFloor,
+        'week_starts_on': local.weekStartsOn,
+        'driving_days_per_week': local.drivingDaysPerWeek,
+        'distance_unit': local.distanceUnit.name,
         'theme_mode': local.themeMode.name,
       }, onConflict: 'user_id');
     }
@@ -301,13 +311,63 @@ extension RestoreAccountRecords on SupabaseSyncService {
     if (preferences != null) {
       final row = Map<String, Object?>.from(preferences);
       final name = row['driver_name'];
+      double preferenceNumber(
+        String key,
+        double fallback, {
+        required double min,
+        required double max,
+      }) {
+        if (!row.containsKey(key)) return fallback;
+        final value = SupabaseSyncService._number(row[key]);
+        return value >= min && value <= max ? value : fallback;
+      }
+
       restored = restored.copyWith(
         driverName: name is String && name.trim().isNotEmpty
             ? name.trim()
             : null,
-        dailyGoal: SupabaseSyncService._number(row['daily_goal']),
-        vehicleCostPerMile: SupabaseSyncService._number(
-          row['vehicle_cost_per_mile'],
+        dailyGoal: preferenceNumber(
+          'daily_goal',
+          restored.dailyGoal,
+          min: 1,
+          max: 100000,
+        ),
+        vehicleCostPerMile: preferenceNumber(
+          'vehicle_cost_per_mile',
+          restored.vehicleCostPerMile,
+          min: 0,
+          max: 100,
+        ),
+        energySource: EnergySource.fromName(row['energy_source']),
+        fuelEfficiency: preferenceNumber(
+          'fuel_efficiency',
+          restored.fuelEfficiency,
+          min: .1,
+          max: 500,
+        ),
+        fuelPrice: preferenceNumber(
+          'fuel_price',
+          restored.fuelPrice,
+          min: 0,
+          max: 100,
+        ),
+        hourlyFloor: preferenceNumber(
+          'hourly_floor',
+          restored.hourlyFloor,
+          min: 1,
+          max: 10000,
+        ),
+        weekStartsOn: row['week_starts_on'] == DateTime.sunday
+            ? DateTime.sunday
+            : DateTime.monday,
+        drivingDaysPerWeek: switch (row['driving_days_per_week']) {
+          final int days when days >= 1 && days <= 7 => days,
+          _ => restored.drivingDaysPerWeek,
+        },
+        distanceUnit: DistanceUnit.fromName(row['distance_unit']),
+        themeMode: ThemeMode.values.firstWhere(
+          (mode) => mode.name == row['theme_mode'],
+          orElse: () => restored.themeMode,
         ),
       );
     }

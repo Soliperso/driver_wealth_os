@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../features/driving/domain/driving_session.dart';
 import '../../features/settings/domain/driving_costs.dart';
+import '../../features/settings/domain/distance_unit.dart';
 import '../../features/shifts/domain/shift.dart';
 import '../../features/freedom/domain/freedom_goal.dart';
 
@@ -19,6 +20,7 @@ class AppSnapshot {
     this.hourlyFloor = defaultHourlyFloor,
     this.weekStartsOn = DateTime.monday,
     this.drivingDaysPerWeek = defaultDrivingDaysPerWeek,
+    this.distanceUnit = DistanceUnit.miles,
     this.shifts = const [],
     this.freedomGoal,
     this.themeMode = ThemeMode.system,
@@ -60,6 +62,7 @@ class AppSnapshot {
   final int weekStartsOn;
 
   final int drivingDaysPerWeek;
+  final DistanceUnit distanceUnit;
   final List<Shift> shifts;
   final FreedomGoal? freedomGoal;
   final ThemeMode themeMode;
@@ -129,6 +132,7 @@ class AppSnapshot {
     double? hourlyFloor,
     int? weekStartsOn,
     int? drivingDaysPerWeek,
+    DistanceUnit? distanceUnit,
     ThemeMode? themeMode,
     DateTime? syncCursor,
     Set<String>? dirtyShiftIds,
@@ -145,6 +149,7 @@ class AppSnapshot {
     hourlyFloor: hourlyFloor ?? this.hourlyFloor,
     weekStartsOn: weekStartsOn ?? this.weekStartsOn,
     drivingDaysPerWeek: drivingDaysPerWeek ?? this.drivingDaysPerWeek,
+    distanceUnit: distanceUnit ?? this.distanceUnit,
     shifts: shifts ?? this.shifts,
     freedomGoal: clearFreedomGoal ? null : (freedomGoal ?? this.freedomGoal),
     themeMode: themeMode ?? this.themeMode,
@@ -167,6 +172,7 @@ class AppSnapshot {
     'hourlyFloor': hourlyFloor,
     'weekStartsOn': weekStartsOn,
     'drivingDaysPerWeek': drivingDaysPerWeek,
+    'distanceUnit': distanceUnit.name,
     'shifts': shifts.map((shift) => shift.toJson()).toList(),
     'freedomGoal': freedomGoal?.toJson(),
     'themeMode': themeMode.name,
@@ -261,6 +267,7 @@ class AppSnapshot {
         final int days when days >= 1 && days <= 7 => days,
         _ => defaultDrivingDaysPerWeek,
       },
+      distanceUnit: DistanceUnit.fromName(json['distanceUnit']),
       themeMode: ThemeMode.values.firstWhere(
         (mode) => mode.name == json['themeMode'],
         orElse: () => ThemeMode.system,

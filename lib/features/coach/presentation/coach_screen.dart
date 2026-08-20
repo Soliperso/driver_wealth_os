@@ -12,11 +12,17 @@ class CoachScreen extends StatelessWidget {
     required this.shifts,
     required this.dailyGoal,
     required this.freedomGoal,
+    required this.hourlyFloor,
+    required this.weekStartsOn,
+    required this.drivingDaysPerWeek,
   });
 
   final List<Shift> shifts;
   final double dailyGoal;
   final FreedomGoal? freedomGoal;
+  final double hourlyFloor;
+  final int weekStartsOn;
+  final int drivingDaysPerWeek;
 
   @override
   Widget build(BuildContext context) {
@@ -24,6 +30,9 @@ class CoachScreen extends StatelessWidget {
       shifts: shifts,
       dailyGoal: dailyGoal,
       freedomGoal: freedomGoal,
+      hourlyFloor: hourlyFloor,
+      weekStartsOn: weekStartsOn,
+      drivingDaysPerWeek: drivingDaysPerWeek,
     );
     return SoftScaffold(
       title: 'Profit coach',

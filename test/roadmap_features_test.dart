@@ -72,6 +72,11 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Profit coach'), findsOneWidget);
     expect(find.text('Your next move'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('Emergency fund'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
     expect(find.text('Emergency fund'), findsWidgets);
   });
 }
@@ -79,10 +84,10 @@ void main() {
 List<Shift> _patternShifts() {
   final now = DateTime.now();
   return [
-    _shift('a', now.subtract(const Duration(days: 1)), 7, 50),
-    _shift('b', now.subtract(const Duration(days: 2)), 12, 40),
-    _shift('c', now.subtract(const Duration(days: 3)), 18, 30),
-    _shift('d', now.subtract(const Duration(days: 4)), 23, 20),
+    _shift('a', now, 7, 50),
+    _shift('b', now, 12, 40),
+    _shift('c', now, 18, 30),
+    _shift('d', now, 23, 20),
   ];
 }
 

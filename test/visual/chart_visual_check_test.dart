@@ -18,6 +18,9 @@ import 'package:driver_wealth_os/features/driving/domain/driving_session.dart';
 import 'package:driver_wealth_os/features/freedom/domain/freedom_goal.dart';
 import 'package:driver_wealth_os/features/freedom/presentation/freedom_screen.dart';
 import 'package:driver_wealth_os/features/history/presentation/history_screen.dart';
+import 'package:driver_wealth_os/features/settings/domain/distance_unit.dart';
+import 'package:driver_wealth_os/features/settings/domain/driving_costs.dart';
+import 'package:driver_wealth_os/features/settings/presentation/settings_screen.dart';
 import 'package:driver_wealth_os/features/shifts/domain/shift.dart';
 import 'package:driver_wealth_os/features/today/presentation/today_screen.dart';
 import 'package:flutter/material.dart';
@@ -111,6 +114,29 @@ void main() {
       matchesGoldenFile('output/$name.png'),
     );
   }
+
+  testWidgets('settings light', (tester) async {
+    await capture(tester, 'settings_light', _settings());
+  });
+
+  testWidgets('settings dark', (tester) async {
+    await capture(
+      tester,
+      'settings_dark',
+      _settings(),
+      brightness: Brightness.dark,
+    );
+  });
+
+  testWidgets('settings data and account', (tester) async {
+    await capture(
+      tester,
+      'settings_data_account_dark',
+      _settings(),
+      brightness: Brightness.dark,
+      scrollBy: 1150,
+    );
+  });
 
   // The hero card now carries the period selector, so the top of the screen is
   // the part worth looking at rather than something to scroll past.
@@ -342,6 +368,38 @@ void main() {
     );
   });
 }
+
+Widget _settings() => SettingsScreen(
+  driverName: 'Ahmed',
+  dailyGoal: 100,
+  drivingCosts: const DrivingCosts(
+    energySource: EnergySource.gasoline,
+    fuelEfficiency: 24.9,
+    fuelPrice: 5.75,
+    vehicleCostPerMile: .30,
+  ),
+  hourlyFloor: 25,
+  weekStartsOn: DateTime.monday,
+  drivingDaysPerWeek: 5,
+  distanceUnit: DistanceUnit.miles,
+  onDriverNameChanged: (_) {},
+  onDailyGoalChanged: (_) {},
+  onVehicleCostPerMileChanged: (_) {},
+  onEnergySourceChanged: (_) {},
+  onFuelEfficiencyChanged: (_) {},
+  onFuelPriceChanged: (_) {},
+  onHourlyFloorChanged: (_) {},
+  onWeekStartsOnChanged: (_) {},
+  onDrivingDaysPerWeekChanged: (_) {},
+  onDistanceUnitChanged: (_) {},
+  themeMode: ThemeMode.system,
+  onThemeModeChanged: (_) {},
+  onExportData: () async {},
+  onOpenPrivacy: () {},
+  accountEmail: 'ahmed@example.com',
+  onSignOut: () async {},
+  onConnectAccounts: () {},
+);
 
 Widget _history() => HistoryScreen(
   shifts: _seed(),

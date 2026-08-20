@@ -8,25 +8,27 @@
 library;
 
 enum EnergySource {
-  gasoline('Gas', 'MPG', 'Price per gallon', 'gal'),
-  electric('Electric', 'Miles per kWh', 'Price per kWh', 'kWh');
+  gasoline('Gas', 'MPG', 'Price per gallon', 'gal', 25, 3.50),
+  hybrid('Hybrid', 'MPG', 'Price per gallon', 'gal', 45, 3.50),
+  electric('Electric', 'Miles per kWh', 'Price per kWh', 'kWh', 3.5, .17);
 
   const EnergySource(
     this.label,
     this.efficiencyLabel,
     this.priceLabel,
     this.unit,
+    this.defaultEfficiency,
+    this.defaultPrice,
   );
 
   /// Shown on the Settings segmented control.
   final String label;
 
-  /// Hybrids are gas cars with good numbers, not a third kind of maths, so
-  /// there is deliberately no `hybrid` case — a hybrid driver enters their real
-  /// MPG and the result is correct.
   final String efficiencyLabel;
   final String priceLabel;
   final String unit;
+  final double defaultEfficiency;
+  final double defaultPrice;
 
   static EnergySource fromName(Object? value) => EnergySource.values.firstWhere(
     (source) => source.name == value,
