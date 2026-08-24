@@ -15,8 +15,6 @@ import 'package:driver_wealth_os/features/admin/application/admin_repository.dar
 import 'package:driver_wealth_os/features/admin/domain/admin_models.dart';
 import 'package:driver_wealth_os/features/admin/presentation/admin_dashboard_screen.dart';
 import 'package:driver_wealth_os/features/driving/domain/driving_session.dart';
-import 'package:driver_wealth_os/features/freedom/domain/freedom_goal.dart';
-import 'package:driver_wealth_os/features/freedom/presentation/freedom_screen.dart';
 import 'package:driver_wealth_os/features/history/presentation/history_screen.dart';
 import 'package:driver_wealth_os/features/settings/domain/distance_unit.dart';
 import 'package:driver_wealth_os/features/settings/domain/driving_costs.dart';
@@ -211,19 +209,6 @@ void main() {
     await capture(tester, 'dna_light', _history(), scrollBy: 900);
   });
 
-  testWidgets('freedom ring light', (tester) async {
-    await capture(tester, 'freedom_light', _freedom());
-  });
-
-  testWidgets('freedom ring dark', (tester) async {
-    await capture(
-      tester,
-      'freedom_dark',
-      _freedom(),
-      brightness: Brightness.dark,
-    );
-  });
-
   testWidgets('today idle with start driving', (tester) async {
     await capture(
       tester,
@@ -406,19 +391,6 @@ Widget _history() => HistoryScreen(
   onAddShift: () {},
   onShiftUpdated: (_) {},
   onShiftDeleted: (_) {},
-);
-
-Widget _freedom() => FreedomScreen(
-  shifts: _seed(),
-  goal: FreedomGoal(
-    id: 'goal-1',
-    title: 'Emergency fund',
-    targetAmount: 5000,
-    startingAmount: 500,
-    allocationRate: .25,
-    createdAt: DateTime(2026, 6, 1),
-  ),
-  onGoalChanged: (_) {},
 );
 
 Widget _today({required bool losing}) => TodayScreen(

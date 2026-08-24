@@ -32,7 +32,6 @@ class RecordingSyncService implements SyncService {
           dirtyShiftIds: const {},
           deletedShiftIds: const {},
           dirtyPreferences: false,
-          dirtyGoal: false,
           syncCursor: DateTime.utc(2026, 8, 12),
         );
   }

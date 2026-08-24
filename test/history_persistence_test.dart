@@ -1,7 +1,6 @@
 import 'package:driver_wealth_os/app.dart';
 import 'package:driver_wealth_os/core/persistence/app_store.dart';
 import 'package:driver_wealth_os/features/accounts/domain/work_platform.dart';
-import 'package:driver_wealth_os/features/freedom/domain/freedom_goal.dart';
 import 'package:driver_wealth_os/features/shifts/domain/shift.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -32,7 +31,6 @@ void main() {
         driverName: 'Ahmed',
         dailyGoal: 325,
         shifts: [_shift()],
-        freedomGoal: _goal(),
       ),
     );
 
@@ -41,7 +39,6 @@ void main() {
     expect(restored.driverName, 'Ahmed');
     expect(restored.dailyGoal, 325);
     expect(restored.shifts.single.id, 'persisted-1');
-    expect(restored.freedomGoal?.title, 'Emergency fund');
   });
 
   testWidgets('saved state survives app reconstruction', (tester) async {
@@ -118,15 +115,6 @@ void main() {
     expect(store.snapshot.shifts, isEmpty);
   });
 }
-
-FreedomGoal _goal() => FreedomGoal(
-  id: 'goal-1',
-  title: 'Emergency fund',
-  targetAmount: 5000,
-  startingAmount: 500,
-  allocationRate: .2,
-  createdAt: DateTime(2026, 1, 1),
-);
 
 Shift _shift() => Shift.single(
   id: 'persisted-1',

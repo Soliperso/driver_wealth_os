@@ -15,7 +15,7 @@ The app remains driver-facing financial software. It does not match riders, disp
 | 2 — History | Persistent shifts, detail, edit, delete | Complete | `history` feature and app-store persistence tests |
 | 3 — Weekly Performance | Weekly totals, net/hour, keep rate, comparison, best shift | Complete | `ShiftAnalytics.weekly` and History weekly card |
 | 4 — Earnings DNA v1 | Day/time patterns with relative A–D profitability grades | Complete | `ShiftAnalytics.earningsPatterns` and Earnings DNA card |
-| 5 — Freedom Goal | One editable goal connected to true profit | Complete | `FreedomGoal`, persistent goal editor, progress and projection |
+| 5 — Freedom Goal | One editable goal connected to true profit | Removed | Cut after the Coach redesign: the goal ring restated the daily goal already on Today, and its projection was the only place the app forecast earnings. `freedom_goals` dropped in `20260820130000_remove_retired_goal_data.sql`. |
 | 6 — Money Leaks v1 | Detect negative profit, weak hourly performance, and low keep rate | Complete | One highest-value leak per shift, preventing duplicate recovery totals |
 | 7 — Backend | Hosted auth/data/sync foundation | Foundation complete; activation external | Supabase migrations and Edge Functions exist. Live account import requires provider credentials and enabled runtime configuration. |
 | 8 — Coach | One prioritized recommendation backed by calculated data | Complete for MVP | Deterministic local Profit Coach using goals, weekly performance, patterns, and leaks. No fabricated AI responses. |
@@ -64,7 +64,7 @@ Live work-account import cannot be truthfully completed or verified without the 
 3. Complete a sandbox account connection.
 4. Verify webhook signature handling, normalized import, and idempotent upsert against the hosted database.
 
-This dependency does not block the local MVP, manual tracking, analytics, Freedom goal, or Profit Coach.
+This dependency does not block the local MVP, manual tracking, analytics, or Profit Coach.
 
 ## Verification
 
@@ -75,4 +75,4 @@ flutter analyze
 flutter test
 ```
 
-The automated suite covers calculation accuracy, rounding, duplicate prevention, persistence, daily-goal states, platform coverage, history operations, weekly analytics, Earnings DNA, Money Leaks, Freedom progress, and Coach behavior.
+The automated suite covers calculation accuracy, rounding, duplicate prevention, persistence, daily-goal states, platform coverage, history operations, weekly analytics, Earnings DNA, Money Leaks, and Coach behavior.

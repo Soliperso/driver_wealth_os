@@ -28,7 +28,7 @@ void main() {
     expect(find.byType(NavigationBar), findsNothing);
   });
 
-  testWidgets('weekly, DNA, freedom goal and coach are reachable end to end', (
+  testWidgets('weekly, DNA and coach are reachable end to end', (
     tester,
   ) async {
     final store = MemoryAppStore(
@@ -49,35 +49,9 @@ void main() {
     expect(find.text('A'), findsWidgets);
     expect(find.text('D'), findsWidgets);
 
-    await tester.tap(find.text('Freedom'));
-    await tester.pumpAndSettle();
-    expect(find.text('Choose what driving is building'), findsOneWidget);
-    expect(find.text('Money leaks'), findsOneWidget);
-
-    await tester.tap(find.text('Create goal'));
-    await tester.pumpAndSettle();
-    final fields = find.byType(TextFormField);
-    await tester.enterText(fields.at(0), 'Emergency fund');
-    await tester.enterText(fields.at(1), '5000');
-    await tester.enterText(fields.at(2), '500');
-    await tester.enterText(fields.at(3), '20');
-    await tester.ensureVisible(find.widgetWithText(FilledButton, 'Save goal'));
-    await tester.tap(find.widgetWithText(FilledButton, 'Save goal'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Emergency fund'), findsOneWidget);
-    expect(store.snapshot.freedomGoal?.targetAmount, 5000);
-
     await tester.tap(find.text('Coach'));
     await tester.pumpAndSettle();
     expect(find.text('Profit coach'), findsOneWidget);
-    expect(find.text('Your next move'), findsOneWidget);
-    await tester.scrollUntilVisible(
-      find.text('Emergency fund'),
-      200,
-      scrollable: find.byType(Scrollable).first,
-    );
-    expect(find.text('Emergency fund'), findsWidgets);
   });
 }
 
