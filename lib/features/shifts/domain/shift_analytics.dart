@@ -1,3 +1,4 @@
+import '../../settings/domain/measurement_units.dart';
 import 'shift.dart';
 import 'shift_summary.dart';
 
@@ -110,6 +111,7 @@ class ShiftAnalytics {
   static List<MoneyLeak> moneyLeaks(
     Iterable<Shift> shifts, {
     double hourlyFloor = 0,
+    MeasurementUnits units = const MeasurementUnits(),
   }) {
     final unique = _unique(shifts).where((shift) => shift.hours > 0).toList();
     if (unique.isEmpty) return const [];
@@ -130,7 +132,7 @@ class ShiftAnalytics {
             type: MoneyLeakType.negativeProfit,
             title: 'Unprofitable shift',
             detail:
-                '${shift.platform.displayName} lost \$${shift.netProfit.abs().toStringAsFixed(2)} after costs.',
+                '${shift.platform.displayName} lost ${units.cents(shift.netProfit.abs())} after costs.',
             potentialRecovery: shift.netProfit.abs(),
           ),
         );
@@ -150,7 +152,7 @@ class ShiftAnalytics {
                 ? '${shift.platform.displayName} cost more per hour than it paid.'
                 : '${shift.platform.displayName} ran '
                       '${_percentBelow(shift.netPerHour, baselineRate)} below '
-                      '${usesFloor ? 'your \$${_rate(baselineRate)}/hr floor' : 'your tracked hourly average'}.',
+                      '${usesFloor ? 'your ${_rate(baselineRate, units)}/hr floor' : 'your tracked hourly average'}.',
             potentialRecovery: recovery,
           ),
         );
@@ -200,9 +202,12 @@ class ShiftAnalytics {
     return PatternGrade.d;
   }
 
-  static String _rate(double value) => value.truncateToDouble() == value
-      ? value.toStringAsFixed(0)
-      : value.toStringAsFixed(2);
+  /// A floor the driver typed, in their own currency. Cents are dropped when
+  /// they are all zeros — a $25/hr floor reads as `$25`, not `$25.00`.
+  static String _rate(double value, MeasurementUnits units) =>
+      value.truncateToDouble() == value
+      ? units.whole(value)
+      : units.cents(value);
 
   static String _percentBelow(double value, double baseline) =>
       '${(((1 - value / baseline) * 100).round()).clamp(0, 99)}%';

@@ -43,6 +43,9 @@ dependencies:
   permission_handler: ^13.0.1
   flutter_timezone: ^5.1.0
   share_plus: ^13.3.0
+  # Direct dependency of the CSV history export. It resolved transitively via
+  # share_plus, which meant a share_plus bump could have taken it away.
+  path_provider: ^2.1.6
 dev_dependencies:
   flutter_test:
     sdk: flutter

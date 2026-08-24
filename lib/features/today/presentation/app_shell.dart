@@ -25,6 +25,10 @@ import '../../history/presentation/history_screen.dart';
 import '../../history/presentation/shift_detail_screen.dart';
 import '../../settings/domain/driving_costs.dart';
 import '../../settings/domain/distance_unit.dart';
+import '../../settings/domain/driver_preferences.dart';
+// Prefixed: this file already imports the stored [DistanceUnit], and the
+// display-side enum in here carries the same name.
+import '../../settings/domain/measurement_units.dart' as display;
 import '../../settings/application/shift_export.dart';
 import '../../settings/presentation/privacy_security_screen.dart';
 import '../../settings/presentation/settings_screen.dart';
@@ -317,6 +321,31 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     if (mounted) setState(() {});
   }
 
+  /// The settings the shell already holds as loose fields, bundled into the
+  /// shape the newer screens ask for.
+  ///
+  /// The shell itself still carries them one by one — migrating it, and every
+  /// callback hanging off it, is a separate job. Assembling here keeps that
+  /// churn out of [CoachScreen], which has no business knowing which of the two
+  /// shapes its parent happens to store.
+  DriverPreferences get _preferences => DriverPreferences(
+    driverName: widget.driverName,
+    dailyGoal: widget.dailyGoal,
+    drivingCosts: widget.drivingCosts,
+    hourlyFloor: widget.hourlyFloor,
+    weekStartsOn: widget.weekStartsOn,
+    drivingDaysPerWeek: widget.drivingDaysPerWeek,
+    units: display.MeasurementUnits(
+      // Mapped case by case rather than by `name`: the stored enum spells it
+      // `kilometers` and the display enum `kilometres`, so matching on the
+      // name would silently fall back to miles for every metric driver.
+      distance: switch (widget.distanceUnit) {
+        DistanceUnit.miles => display.DistanceUnit.miles,
+        DistanceUnit.kilometers => display.DistanceUnit.kilometres,
+      },
+    ),
+  );
+
   static const _destinations = [
     NavigationDestination(
       icon: Icon(Icons.home_outlined),
@@ -386,13 +415,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         onShiftUpdated: widget.onShiftUpdated,
         onShiftDeleted: widget.onShiftDeleted,
       ),
-      2 => CoachScreen(
-        shifts: widget.shifts,
-        dailyGoal: widget.dailyGoal,
-        hourlyFloor: widget.hourlyFloor,
-        weekStartsOn: widget.weekStartsOn,
-        drivingDaysPerWeek: widget.drivingDaysPerWeek,
-      ),
+      2 => CoachScreen(shifts: widget.shifts, preferences: _preferences),
       _ => SettingsScreen(
         driverName: widget.driverName,
         dailyGoal: widget.dailyGoal,
