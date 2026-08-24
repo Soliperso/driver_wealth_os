@@ -614,7 +614,6 @@ class _ProfitHero extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: accent.withValues(alpha: .12),
                   shape: BoxShape.circle,
-                  border: Border.all(color: accent.withValues(alpha: .20)),
                 ),
                 child: Icon(
                   switch (goalState) {

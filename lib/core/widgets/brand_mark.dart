@@ -27,7 +27,6 @@ class BrandMark extends StatelessWidget {
               end: Alignment.bottomRight,
               colors: [AppColors.brand, AppColors.brandDeep],
             ),
-            border: Border.all(color: Colors.white.withValues(alpha: .18)),
             boxShadow: showShadow
                 ? [
                     BoxShadow(

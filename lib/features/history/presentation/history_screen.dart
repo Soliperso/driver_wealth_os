@@ -245,7 +245,6 @@ class _CostReviewNotice extends StatelessWidget {
       decoration: BoxDecoration(
         color: colors.tertiaryContainer.withValues(alpha: .58),
         borderRadius: BorderRadius.circular(Radii.sm),
-        border: Border.all(color: colors.outlineVariant.withValues(alpha: .38)),
       ),
       child: Row(
         children: [

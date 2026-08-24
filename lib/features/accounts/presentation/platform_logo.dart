@@ -21,14 +21,6 @@ class PlatformLogo extends StatelessWidget {
       decoration: BoxDecoration(
         color: disc,
         shape: BoxShape.circle,
-        // Drawn in the theme's own foreground rather than a fixed white, so
-        // the ring separates the disc from whatever it sits on in either
-        // theme. The ring is what gives every brand an edge, including the
-        // ones whose colour is close to the surface behind them.
-        border: Border.all(
-          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: .45),
-          width: math.max(1, size * .045),
-        ),
       ),
       child: _logo(context, _markColor(context, disc)),
     );

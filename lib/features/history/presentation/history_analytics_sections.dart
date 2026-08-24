@@ -144,7 +144,6 @@ class _ChartStyleToggle extends StatelessWidget {
       decoration: BoxDecoration(
         color: colors.surfaceContainerHighest.withValues(alpha: .52),
         borderRadius: BorderRadius.circular(Radii.sm),
-        border: Border.all(color: colors.outlineVariant.withValues(alpha: .38)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -493,7 +492,6 @@ class _GradeBadge extends StatelessWidget {
       decoration: BoxDecoration(
         color: color.withValues(alpha: .16),
         borderRadius: BorderRadius.circular(Radii.sm - 2),
-        border: Border.all(color: color.withValues(alpha: .4)),
       ),
       child: Text(
         grade.name.toUpperCase(),

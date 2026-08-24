@@ -1,0 +1,46 @@
+name: CI
+
+# The app calculates money. Nothing should reach main without the analyzer and
+# the test suite having agreed to it — both were documented in the README and
+# neither was enforced, which is how a red suite and three missing migrations
+# went unnoticed.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      # `--fatal-infos` because the default lint set only ever emits infos, so
+      # without it the step passes on every finding it reports.
+      - name: Analyze
+        run: flutter analyze --fatal-infos
+
+      - name: Verify formatting
+        run: dart format --output=none --set-exit-if-changed .
+
+      - name: Test
+        run: flutter test
+
+      # Goldens are host-dependent — font rasterisation differs between a Mac
+      # and this runner — so they are tagged and skipped by default. They are
+      # run here for the record, not as a gate.
+      - name: Goldens (advisory)
+        continue-on-error: true
+        run: flutter test --tags visual --run-skipped

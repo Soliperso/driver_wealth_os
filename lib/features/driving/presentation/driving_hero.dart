@@ -345,9 +345,6 @@ class _AppChip extends StatelessWidget {
           // into the hero's own dark fill.
           color: colors.surface,
           borderRadius: BorderRadius.circular(Radii.sm),
-          border: Border.all(
-            color: colors.outlineVariant.withValues(alpha: .55),
-          ),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -396,7 +393,6 @@ class _LiveMetric extends StatelessWidget {
       decoration: BoxDecoration(
         color: colors.surface.withValues(alpha: .55),
         borderRadius: BorderRadius.circular(Radii.sm),
-        border: Border.all(color: colors.outlineVariant.withValues(alpha: .42)),
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -560,7 +556,6 @@ class _LimitedBackgroundNotice extends StatelessWidget {
       decoration: BoxDecoration(
         color: colors.surface.withValues(alpha: .6),
         borderRadius: BorderRadius.circular(Radii.sm),
-        border: Border.all(color: colors.outlineVariant.withValues(alpha: .36)),
       ),
       child: Row(
         children: [

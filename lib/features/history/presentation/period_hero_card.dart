@@ -399,10 +399,6 @@ class _MetricPanel extends StatelessWidget {
       decoration: BoxDecoration(
         color: colors.surface.withValues(alpha: .55),
         borderRadius: BorderRadius.circular(Radii.sm),
-        // A hairline rather than more fill: the panel only has to be findable,
-        // and raising the fill far enough to read on the tinted card would make
-        // it compete with the headline again.
-        border: Border.all(color: colors.outlineVariant.withValues(alpha: .30)),
       ),
       child: Column(
         children: [

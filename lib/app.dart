@@ -15,7 +15,6 @@ import 'features/driving/application/driving_session_controller.dart';
 import 'features/driving/application/location_tracker.dart';
 import 'features/driving/domain/driving_session.dart';
 import 'features/onboarding/presentation/onboarding_screen.dart';
-import 'features/freedom/domain/freedom_goal.dart';
 import 'features/shifts/domain/shift.dart';
 import 'features/settings/domain/driving_costs.dart';
 import 'features/settings/domain/distance_unit.dart';
@@ -86,7 +85,6 @@ class _DriverWealthAppState extends State<DriverWealthApp> {
   DistanceUnit _distanceUnit = DistanceUnit.miles;
   ThemeMode _themeMode = ThemeMode.system;
   DrivingSession? _activeSession;
-  FreedomGoal? _freedomGoal;
   Shift? _pendingDraft;
   Future<void> _pendingSave = Future.value();
 
@@ -101,7 +99,6 @@ class _DriverWealthAppState extends State<DriverWealthApp> {
   final Set<String> _dirtyShiftIds = {};
   final Set<String> _deletedShiftIds = {};
   var _dirtyPreferences = false;
-  var _dirtyGoal = false;
   var _syncingRecords = false;
 
   /// Surfaced in the UI rather than swallowed: a driver whose shifts have
@@ -213,7 +210,6 @@ class _DriverWealthAppState extends State<DriverWealthApp> {
               weekStartsOn: _weekStartsOn,
               drivingDaysPerWeek: _drivingDaysPerWeek,
               distanceUnit: _distanceUnit,
-              freedomGoal: _freedomGoal,
               onShiftAdded: _addShift,
               onShiftUpdated: _updateShift,
               onShiftDeleted: _deleteShift,
@@ -229,7 +225,6 @@ class _DriverWealthAppState extends State<DriverWealthApp> {
               onDriverNameChanged: _changeDriverName,
               themeMode: _themeMode,
               onThemeModeChanged: _changeThemeMode,
-              onFreedomGoalChanged: _changeFreedomGoal,
               syncStatus: _syncStatus,
               onRefreshEarnings: refreshImportedEarnings,
               drivingController: _driving,
@@ -260,13 +255,11 @@ class _DriverWealthAppState extends State<DriverWealthApp> {
       _distanceUnit = snapshot.distanceUnit;
       _themeMode = snapshot.themeMode;
       _activeSession = snapshot.activeSession;
-      _freedomGoal = snapshot.freedomGoal;
       _pendingDraft = snapshot.pendingDraft;
       _syncCursor = snapshot.syncCursor;
       _dirtyShiftIds.addAll(snapshot.dirtyShiftIds);
       _deletedShiftIds.addAll(snapshot.deletedShiftIds);
       _dirtyPreferences = snapshot.dirtyPreferences;
-      _dirtyGoal = snapshot.dirtyGoal;
       _shifts
         ..clear()
         ..addAll(snapshot.shifts);
@@ -295,7 +288,6 @@ class _DriverWealthAppState extends State<DriverWealthApp> {
       if (uploadEverything) {
         _dirtyShiftIds.addAll(_shifts.map((shift) => shift.id));
         _dirtyPreferences = _dirtyPreferences || _driverName != null;
-        _dirtyGoal = _dirtyGoal || _freedomGoal != null;
       }
 
       var snapshot = _snapshot();
@@ -332,7 +324,6 @@ class _DriverWealthAppState extends State<DriverWealthApp> {
       _drivingDaysPerWeek = snapshot.drivingDaysPerWeek;
       _distanceUnit = snapshot.distanceUnit;
       _themeMode = snapshot.themeMode;
-      _freedomGoal = snapshot.freedomGoal;
       _syncCursor = snapshot.syncCursor;
       _shifts
         ..clear()
@@ -344,7 +335,6 @@ class _DriverWealthAppState extends State<DriverWealthApp> {
         ..clear()
         ..addAll(snapshot.deletedShiftIds);
       _dirtyPreferences = snapshot.dirtyPreferences;
-      _dirtyGoal = snapshot.dirtyGoal;
     });
     _save();
   }
@@ -447,7 +437,6 @@ class _DriverWealthAppState extends State<DriverWealthApp> {
     setState(() {
       _driverName = null;
       _shifts.clear();
-      _freedomGoal = null;
       _pendingDraft = null;
       _activeSession = null;
       _syncStatus = null;
@@ -467,7 +456,6 @@ class _DriverWealthAppState extends State<DriverWealthApp> {
       _dirtyShiftIds.clear();
       _deletedShiftIds.clear();
       _dirtyPreferences = false;
-      _dirtyGoal = false;
       _adminAccess = false;
     });
     _save();
@@ -615,14 +603,6 @@ class _DriverWealthAppState extends State<DriverWealthApp> {
     _saveAndSync();
   }
 
-  void _changeFreedomGoal(FreedomGoal? goal) {
-    setState(() {
-      _freedomGoal = goal;
-      _dirtyGoal = true;
-    });
-    _saveAndSync();
-  }
-
   AppSnapshot _snapshot() => AppSnapshot(
     driverName: _driverName,
     dailyGoal: _dailyGoal,
@@ -637,13 +617,11 @@ class _DriverWealthAppState extends State<DriverWealthApp> {
     themeMode: _themeMode,
     activeSession: _activeSession,
     shifts: List.unmodifiable(_shifts),
-    freedomGoal: _freedomGoal,
     pendingDraft: _pendingDraft,
     syncCursor: _syncCursor,
     dirtyShiftIds: Set.unmodifiable(_dirtyShiftIds),
     deletedShiftIds: Set.unmodifiable(_deletedShiftIds),
     dirtyPreferences: _dirtyPreferences,
-    dirtyGoal: _dirtyGoal,
   );
 
   DrivingCosts get _drivingCosts => DrivingCosts(

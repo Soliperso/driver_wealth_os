@@ -133,13 +133,6 @@ class GlassSurface extends StatelessWidget {
           decoration: BoxDecoration(
             color: surfaceColor,
             borderRadius: borderRadius,
-            border: Border.all(
-              color: colors.outlineVariant.withValues(
-                alpha: isDark
-                    ? elevation.borderOpacity * .75
-                    : elevation.borderOpacity,
-              ),
-            ),
           ),
           child: child,
         ),
@@ -183,7 +176,6 @@ class SoftIcon extends StatelessWidget {
       decoration: BoxDecoration(
         color: colors.primary.withValues(alpha: .12),
         shape: BoxShape.circle,
-        border: Border.all(color: colors.primary.withValues(alpha: .20)),
       ),
       child: Icon(icon, size: size, color: colors.primary),
     );

@@ -4,6 +4,7 @@ import '../../../core/format/money.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/page_frame.dart';
 import '../../../core/widgets/soft_surfaces.dart';
+import '../../tax/domain/expense.dart';
 import '../domain/distance_unit.dart';
 import '../domain/driving_costs.dart';
 
@@ -183,11 +184,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   onTap: _chooseDistanceUnit,
                 ),
                 _SettingsTile(
-                  key: const ValueKey('settings-appearance'),
-                  icon: Icons.contrast_rounded,
-                  title: 'Appearance',
-                  value: _themeLabel(widget.themeMode),
-                  onTap: _chooseTheme,
+                  key: const ValueKey('settings-expense-categories'),
+                  icon: Icons.receipt_long_rounded,
+                  title: 'Expense categories',
+                  subtitle: 'Deductible business expenses',
+                  value: '${ExpenseCategory.values.length}',
+                  onTap: _showExpenseCategories,
                 ),
               ],
             ),
@@ -375,14 +377,50 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (selected != null) widget.onDistanceUnitChanged(selected);
   }
 
-  Future<void> _chooseTheme() async {
-    final selected = await _showChoice<ThemeMode>(
-      title: 'Appearance',
-      current: widget.themeMode,
-      values: ThemeMode.values,
-      label: _themeLabel,
+  Future<void> _showExpenseCategories() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (context) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.7,
+        maxChildSize: 0.9,
+        builder: (context, scrollController) => Padding(
+          padding: const EdgeInsets.fromLTRB(
+            Space.xl,
+            Space.sm,
+            Space.xl,
+            Space.xl,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Expense categories',
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+              const SizedBox(height: Space.sm),
+              Text(
+                'Costs you can deduct on Schedule C. Vehicle costs marked below cannot be claimed alongside the standard mileage rate.',
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+              const SizedBox(height: Space.lg),
+              Expanded(
+                child: ListView.separated(
+                  controller: scrollController,
+                  itemCount: ExpenseCategory.values.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: Space.sm),
+                  itemBuilder: (context, index) => _ExpenseCategoryCard(
+                    category: ExpenseCategory.values[index],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
-    if (selected != null) widget.onThemeModeChanged(selected);
   }
 
   Future<void> _showBackupInfo() async {
@@ -510,12 +548,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     ),
   );
-
-  static String _themeLabel(ThemeMode mode) => switch (mode) {
-    ThemeMode.system => 'System',
-    ThemeMode.light => 'Light',
-    ThemeMode.dark => 'Dark',
-  };
 
   static String _efficiencyUnit(EnergySource source) =>
       source == EnergySource.electric ? 'mi/kWh' : 'MPG';
@@ -679,18 +711,44 @@ class _DrivingCostSummary extends StatelessWidget {
               context,
             ).textTheme.headlineMedium?.copyWith(fontFeatures: tabularFigures),
           ),
-          const SizedBox(height: Space.md),
-          Wrap(
-            spacing: Space.xl,
-            runSpacing: Space.sm,
-            children: [
-              Text(
-                'Fuel ${Money.cents(fuel)}',
-                style: _breakdownStyle(context),
+          const SizedBox(height: Space.lg),
+          if (allIn > 0)
+            ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: Row(
+                children: [
+                  Expanded(
+                    flex: (fuel / allIn * 1000).round().clamp(1, 999),
+                    child: Container(height: 8, color: colors.primary),
+                  ),
+                  Expanded(
+                    flex: (vehicle / allIn * 1000).round().clamp(1, 999),
+                    child: Container(
+                      height: 8,
+                      color: colors.primary.withValues(alpha: .38),
+                    ),
+                  ),
+                ],
               ),
-              Text(
-                'Vehicle ${Money.cents(vehicle)}',
-                style: _breakdownStyle(context),
+            ),
+          const SizedBox(height: Space.md),
+          Row(
+            children: [
+              Expanded(
+                child: _CostShare(
+                  label: 'Fuel',
+                  amount: Money.cents(fuel),
+                  share: allIn > 0 ? fuel / allIn : 0,
+                  swatch: colors.primary,
+                ),
+              ),
+              Expanded(
+                child: _CostShare(
+                  label: 'Vehicle',
+                  amount: Money.cents(vehicle),
+                  share: allIn > 0 ? vehicle / allIn : 0,
+                  swatch: colors.primary.withValues(alpha: .38),
+                ),
               ),
             ],
           ),
@@ -698,11 +756,107 @@ class _DrivingCostSummary extends StatelessWidget {
       ),
     );
   }
+}
 
-  TextStyle? _breakdownStyle(BuildContext context) => Theme.of(context)
-      .textTheme
-      .bodyMedium
-      ?.copyWith(fontWeight: FontWeight.w700, fontFeatures: tabularFigures);
+class _CostShare extends StatelessWidget {
+  const _CostShare({
+    required this.label,
+    required this.amount,
+    required this.share,
+    required this.swatch,
+  });
+
+  final String label;
+  final String amount;
+  final double share;
+  final Color swatch;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(color: swatch, shape: BoxShape.circle),
+            ),
+            const SizedBox(width: Space.xs),
+            Text(
+              label,
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                color: colors.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: Space.xs),
+        Text(
+          amount,
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w800,
+            fontFeatures: tabularFigures,
+          ),
+        ),
+        Text(
+          '${(share * 100).round()}% of the total',
+          style: Theme.of(
+            context,
+          ).textTheme.bodySmall?.copyWith(color: colors.onSurfaceVariant),
+        ),
+      ],
+    );
+  }
+}
+
+class _ExpenseCategoryCard extends StatelessWidget {
+  const _ExpenseCategoryCard({required this.category});
+
+  final ExpenseCategory category;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(Space.md),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  category.label,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  category.scheduleCLine,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: colors.onSurfaceVariant),
+                ),
+              ],
+            ),
+          ),
+          if (category.isVehicleCost)
+            Icon(
+              Icons.directions_car_rounded,
+              size: 18,
+              color: colors.primary,
+            ),
+        ],
+      ),
+    );
+  }
 }
 
 class _TextEditorSheet extends StatefulWidget {

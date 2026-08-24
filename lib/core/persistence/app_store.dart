@@ -7,7 +7,6 @@ import '../../features/driving/domain/driving_session.dart';
 import '../../features/settings/domain/driving_costs.dart';
 import '../../features/settings/domain/distance_unit.dart';
 import '../../features/shifts/domain/shift.dart';
-import '../../features/freedom/domain/freedom_goal.dart';
 
 class AppSnapshot {
   const AppSnapshot({
@@ -22,7 +21,6 @@ class AppSnapshot {
     this.drivingDaysPerWeek = defaultDrivingDaysPerWeek,
     this.distanceUnit = DistanceUnit.miles,
     this.shifts = const [],
-    this.freedomGoal,
     this.themeMode = ThemeMode.system,
     this.activeSession,
     this.pendingDraft,
@@ -30,7 +28,6 @@ class AppSnapshot {
     this.dirtyShiftIds = const {},
     this.deletedShiftIds = const {},
     this.dirtyPreferences = false,
-    this.dirtyGoal = false,
   });
 
   /// Rough national average for maintenance, tyres and depreciation. Used until
@@ -64,7 +61,6 @@ class AppSnapshot {
   final int drivingDaysPerWeek;
   final DistanceUnit distanceUnit;
   final List<Shift> shifts;
-  final FreedomGoal? freedomGoal;
   final ThemeMode themeMode;
 
   /// The cost side of the preferences, bundled for the callers that price a
@@ -111,18 +107,14 @@ class AppSnapshot {
   final Set<String> deletedShiftIds;
 
   final bool dirtyPreferences;
-  final bool dirtyGoal;
 
   bool get hasUnsyncedChanges =>
       dirtyShiftIds.isNotEmpty ||
       deletedShiftIds.isNotEmpty ||
-      dirtyPreferences ||
-      dirtyGoal;
+      dirtyPreferences;
 
   AppSnapshot copyWith({
     List<Shift>? shifts,
-    FreedomGoal? freedomGoal,
-    bool clearFreedomGoal = false,
     String? driverName,
     double? dailyGoal,
     double? vehicleCostPerMile,
@@ -138,7 +130,6 @@ class AppSnapshot {
     Set<String>? dirtyShiftIds,
     Set<String>? deletedShiftIds,
     bool? dirtyPreferences,
-    bool? dirtyGoal,
   }) => AppSnapshot(
     driverName: driverName ?? this.driverName,
     dailyGoal: dailyGoal ?? this.dailyGoal,
@@ -151,7 +142,6 @@ class AppSnapshot {
     drivingDaysPerWeek: drivingDaysPerWeek ?? this.drivingDaysPerWeek,
     distanceUnit: distanceUnit ?? this.distanceUnit,
     shifts: shifts ?? this.shifts,
-    freedomGoal: clearFreedomGoal ? null : (freedomGoal ?? this.freedomGoal),
     themeMode: themeMode ?? this.themeMode,
     activeSession: activeSession,
     pendingDraft: pendingDraft,
@@ -159,7 +149,6 @@ class AppSnapshot {
     dirtyShiftIds: dirtyShiftIds ?? this.dirtyShiftIds,
     deletedShiftIds: deletedShiftIds ?? this.deletedShiftIds,
     dirtyPreferences: dirtyPreferences ?? this.dirtyPreferences,
-    dirtyGoal: dirtyGoal ?? this.dirtyGoal,
   );
 
   Map<String, Object?> toJson() => {
@@ -174,7 +163,6 @@ class AppSnapshot {
     'drivingDaysPerWeek': drivingDaysPerWeek,
     'distanceUnit': distanceUnit.name,
     'shifts': shifts.map((shift) => shift.toJson()).toList(),
-    'freedomGoal': freedomGoal?.toJson(),
     'themeMode': themeMode.name,
     'activeSession': activeSession?.toJson(),
     'pendingDraft': pendingDraft?.toJson(),
@@ -182,7 +170,6 @@ class AppSnapshot {
     'dirtyShiftIds': dirtyShiftIds.toList(),
     'deletedShiftIds': deletedShiftIds.toList(),
     'dirtyPreferences': dirtyPreferences,
-    'dirtyGoal': dirtyGoal,
   };
 
   factory AppSnapshot.fromJson(Map<String, Object?> json) {
@@ -216,17 +203,6 @@ class AppSnapshot {
       } on FormatException {
         // A damaged draft is dropped; the saved history still loads.
         pendingDraft = null;
-      }
-    }
-    FreedomGoal? freedomGoal;
-    final rawFreedomGoal = json['freedomGoal'];
-    if (rawFreedomGoal is Map) {
-      try {
-        freedomGoal = FreedomGoal.fromJson(
-          Map<String, Object?>.from(rawFreedomGoal),
-        );
-      } on FormatException {
-        freedomGoal = null;
       }
     }
     return AppSnapshot(
@@ -280,7 +256,6 @@ class AppSnapshot {
       },
       shifts: uniqueShifts.values.toList()
         ..sort((a, b) => b.completedAt.compareTo(a.completedAt)),
-      freedomGoal: freedomGoal,
       pendingDraft: pendingDraft,
       syncCursor: DateTime.tryParse(json['syncCursor'] as String? ?? ''),
       // A snapshot written before sync existed has no bookkeeping. Treating
@@ -289,7 +264,6 @@ class AppSnapshot {
       dirtyShiftIds: _stringSet(json['dirtyShiftIds']),
       deletedShiftIds: _stringSet(json['deletedShiftIds']),
       dirtyPreferences: json['dirtyPreferences'] == true,
-      dirtyGoal: json['dirtyGoal'] == true,
     );
   }
 

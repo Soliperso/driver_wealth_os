@@ -1,0 +1,159 @@
+import 'package:flutter/material.dart';
+
+import '../../../core/theme/app_spacing.dart';
+import '../../../core/widgets/grade_badge.dart';
+import '../../../core/widgets/page_frame.dart';
+import '../../../core/widgets/soft_surfaces.dart';
+import '../../../core/widgets/stat_tile.dart';
+import '../../settings/domain/measurement_units.dart';
+import '../../shifts/domain/shift_analytics.dart';
+
+class BestTimesScreen extends StatelessWidget {
+  const BestTimesScreen({
+    super.key,
+    required this.patterns,
+    required this.units,
+  });
+
+  final List<EarningsPattern> patterns;
+  final MeasurementUnits units;
+
+  @override
+  Widget build(BuildContext context) {
+    final ranked =
+        patterns
+            .where((pattern) => pattern.grade != PatternGrade.pending)
+            .toList()
+          ..sort((a, b) => b.netPerHour.compareTo(a.netPerHour));
+
+    return SoftScaffold(
+      title: 'Best times',
+      body: PageFrame(
+        maxWidth: 720,
+        child: ListView(
+          children: [
+            Text(
+              'Your recorded patterns',
+              style: Theme.of(
+                context,
+              ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900),
+            ),
+            const SizedBox(height: Space.sm),
+            Text(
+              'Ranked by True hourly using reviewed sessions only. These are observations from your history, not forecasts.',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                height: 1.45,
+              ),
+            ),
+            const SizedBox(height: Space.xl),
+            for (final (index, pattern) in ranked.indexed) ...[
+              _PatternCard(rank: index + 1, pattern: pattern, units: units),
+              const SizedBox(height: Space.md),
+            ],
+            const SizedBox(height: Space.xxl),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PatternCard extends StatelessWidget {
+  const _PatternCard({
+    required this.rank,
+    required this.pattern,
+    required this.units,
+  });
+
+  final int rank;
+  final EarningsPattern pattern;
+  final MeasurementUnits units;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return GlassSurface(
+      elevation: rank == 1 ? Elevation.raised : Elevation.flat,
+      tint: rank == 1 ? colors.primaryContainer.withValues(alpha: .62) : null,
+      padding: const EdgeInsets.all(Space.lg),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: rank == 1
+                      ? colors.primary.withValues(alpha: .14)
+                      : colors.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(Radii.sm),
+                ),
+                child: Text(
+                  '$rank',
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    color: rank == 1 ? colors.primary : colors.onSurfaceVariant,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              const SizedBox(width: Space.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      pattern.label,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    Text(
+                      pattern.timeBlock.range,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+              ),
+              GradeBadge(grade: pattern.grade),
+            ],
+          ),
+          const SizedBox(height: Space.lg),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: StatTile(
+                  label: 'True hourly',
+                  value: '${units.cents(pattern.netPerHour)}/hr',
+                  emphasis: StatEmphasis.normal,
+                  valueColor: pattern.netPerHour < 0 ? colors.error : null,
+                ),
+              ),
+              Expanded(
+                child: StatTile(
+                  label: 'True Profit',
+                  value: units.cents(pattern.netProfit),
+                  emphasis: StatEmphasis.normal,
+                  valueColor: pattern.netProfit < 0 ? colors.error : null,
+                ),
+              ),
+              Expanded(
+                child: StatTile(
+                  label: 'History',
+                  value:
+                      '${pattern.shiftCount} ${pattern.shiftCount == 1 ? 'session' : 'sessions'}',
+                  emphasis: StatEmphasis.normal,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+

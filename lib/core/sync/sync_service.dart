@@ -2,7 +2,6 @@ import 'package:flutter/material.dart' show ThemeMode;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../features/accounts/domain/work_platform.dart';
-import '../../features/freedom/domain/freedom_goal.dart';
 import '../../features/settings/domain/distance_unit.dart';
 import '../../features/settings/domain/driving_costs.dart';
 import '../../features/shifts/domain/shift.dart';
@@ -61,7 +60,6 @@ final class SupabaseSyncService implements SyncService {
       dirtyShiftIds: const {},
       deletedShiftIds: const {},
       dirtyPreferences: false,
-      dirtyGoal: false,
     );
   }
 
@@ -133,24 +131,6 @@ final class SupabaseSyncService implements SyncService {
         'distance_unit': local.distanceUnit.name,
         'theme_mode': local.themeMode.name,
       }, onConflict: 'user_id');
-    }
-
-    if (local.dirtyGoal) {
-      final goal = local.freedomGoal;
-      if (goal == null) {
-        await _client.from('freedom_goals').delete().eq('user_id', userId);
-      } else {
-        await _client.from('freedom_goals').upsert({
-          'user_id': userId,
-          'id': goal.id,
-          'title': goal.title,
-          'target_amount': goal.targetAmount,
-          'starting_amount': goal.startingAmount,
-          'allocation_rate': goal.allocationRate,
-          'goal_created_at': goal.createdAt.toUtc().toIso8601String(),
-          'deleted_at': null,
-        }, onConflict: 'user_id');
-      }
     }
 
     return local;
@@ -370,40 +350,6 @@ extension RestoreAccountRecords on SupabaseSyncService {
           orElse: () => restored.themeMode,
         ),
       );
-    }
-
-    final goal = await _client
-        .from('freedom_goals')
-        .select()
-        .eq('user_id', userId)
-        .maybeSingle();
-    if (goal != null) {
-      final row = Map<String, Object?>.from(goal);
-      final createdAt = DateTime.tryParse(
-        row['goal_created_at'] as String? ?? '',
-      );
-      final id = row['id'];
-      final title = row['title'];
-      if (createdAt != null && id is String && title is String) {
-        try {
-          restored = restored.copyWith(
-            freedomGoal: FreedomGoal(
-              id: id,
-              title: title,
-              targetAmount: SupabaseSyncService._number(row['target_amount']),
-              startingAmount: SupabaseSyncService._number(
-                row['starting_amount'],
-              ),
-              allocationRate: SupabaseSyncService._number(
-                row['allocation_rate'],
-              ),
-              createdAt: createdAt.toLocal(),
-            ),
-          );
-        } on FormatException {
-          // A goal the app cannot represent is skipped; history still restores.
-        }
-      }
     }
 
     return restored;

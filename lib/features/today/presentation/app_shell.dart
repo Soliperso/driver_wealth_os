@@ -21,8 +21,6 @@ import '../../driving/application/driving_session_controller.dart';
 import '../../driving/application/location_tracker.dart';
 import '../../driving/domain/driving_session.dart';
 import '../../driving/presentation/location_disclosure_sheet.dart';
-import '../../freedom/domain/freedom_goal.dart';
-import '../../freedom/presentation/freedom_screen.dart';
 import '../../history/presentation/history_screen.dart';
 import '../../history/presentation/shift_detail_screen.dart';
 import '../../settings/domain/driving_costs.dart';
@@ -46,7 +44,6 @@ class AppShell extends StatefulWidget {
     required this.weekStartsOn,
     required this.drivingDaysPerWeek,
     required this.distanceUnit,
-    required this.freedomGoal,
     required this.onShiftAdded,
     required this.onShiftUpdated,
     required this.onShiftDeleted,
@@ -60,7 +57,6 @@ class AppShell extends StatefulWidget {
     required this.onDrivingDaysPerWeekChanged,
     required this.onDistanceUnitChanged,
     required this.onDriverNameChanged,
-    required this.onFreedomGoalChanged,
     required this.themeMode,
     required this.onThemeModeChanged,
     this.syncStatus,
@@ -83,7 +79,6 @@ class AppShell extends StatefulWidget {
   final int weekStartsOn;
   final int drivingDaysPerWeek;
   final DistanceUnit distanceUnit;
-  final FreedomGoal? freedomGoal;
   final ValueChanged<Shift> onShiftAdded;
   final ValueChanged<Shift> onShiftUpdated;
   final ValueChanged<String> onShiftDeleted;
@@ -97,7 +92,6 @@ class AppShell extends StatefulWidget {
   final ValueChanged<int> onDrivingDaysPerWeekChanged;
   final ValueChanged<DistanceUnit> onDistanceUnitChanged;
   final ValueChanged<String> onDriverNameChanged;
-  final ValueChanged<FreedomGoal?> onFreedomGoalChanged;
   final ThemeMode themeMode;
   final ValueChanged<ThemeMode> onThemeModeChanged;
   final SyncStatus? syncStatus;
@@ -331,11 +325,6 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     ),
     NavigationDestination(icon: Icon(Icons.history_rounded), label: 'History'),
     NavigationDestination(
-      icon: Icon(Icons.flag_outlined),
-      selectedIcon: Icon(Icons.flag_rounded),
-      label: 'Freedom',
-    ),
-    NavigationDestination(
       icon: Icon(Icons.auto_awesome_outlined),
       selectedIcon: Icon(Icons.auto_awesome_rounded),
       label: 'Coach',
@@ -358,7 +347,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         onAddShift: () => _addShift(returnToToday: true),
         onDailyGoalChanged: widget.onDailyGoalChanged,
         onOpenShift: _openShift,
-        onOpenSettings: () => setState(() => _index = 4),
+        onOpenSettings: () => setState(() => _index = 3),
         onRefresh: widget.onRefreshEarnings,
         drivingSession: widget.drivingController?.session,
         drivingBackgroundLimited:
@@ -397,15 +386,9 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         onShiftUpdated: widget.onShiftUpdated,
         onShiftDeleted: widget.onShiftDeleted,
       ),
-      2 => FreedomScreen(
-        shifts: widget.shifts,
-        goal: widget.freedomGoal,
-        onGoalChanged: widget.onFreedomGoalChanged,
-      ),
-      3 => CoachScreen(
+      2 => CoachScreen(
         shifts: widget.shifts,
         dailyGoal: widget.dailyGoal,
-        freedomGoal: widget.freedomGoal,
         hourlyFloor: widget.hourlyFloor,
         weekStartsOn: widget.weekStartsOn,
         drivingDaysPerWeek: widget.drivingDaysPerWeek,
