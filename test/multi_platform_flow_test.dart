@@ -71,6 +71,8 @@ void main() {
     await tester.pump();
 
     now = startedAt.add(const Duration(hours: 6));
+    await tester.ensureVisible(find.byKey(const ValueKey('end-shift-button')));
+    await tester.pump();
     await tester.tap(find.byKey(const ValueKey('end-shift-button')));
     await tester.pump();
     await tester.pumpAndSettle();
@@ -187,6 +189,8 @@ void main() {
     expect(store.snapshot.activeSession!.livePlatforms, [WorkPlatform.uber]);
 
     now = startedAt.add(const Duration(hours: 7));
+    await tester.ensureVisible(find.byKey(const ValueKey('end-shift-button')));
+    await tester.pump();
     await tester.tap(find.byKey(const ValueKey('end-shift-button')));
     await tester.pump();
     await tester.pumpAndSettle();
@@ -204,7 +208,7 @@ void main() {
     await tester.pumpWidget(DriverWealthApp(store: store));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Enter a shift manually'));
+    await tester.tap(find.text('Enter a session manually'));
     await tester.pumpAndSettle();
 
     // One platform to start with, exactly as before.

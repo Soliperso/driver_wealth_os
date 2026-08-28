@@ -59,6 +59,12 @@ void main() {
       find.byKey(const ValueKey('daily-goal-state-noActivity')),
       findsOneWidget,
     );
+    expect(find.text('No sessions added today'), findsOneWidget);
+    // The gap, not the score: `$0 / $250` leaves the subtraction to the driver.
+    expect(
+      find.textContaining(r'$250.00 to today’s $250 goal'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('recent shifts show even when nothing was driven today', (
@@ -93,7 +99,7 @@ void main() {
       find.byKey(const ValueKey('shift-platform-logo-older-1')),
       200,
     );
-    expect(find.text('Recent shifts'), findsOneWidget);
+    expect(find.text('RECENT SESSIONS'), findsOneWidget);
     expect(
       find.byKey(const ValueKey('shift-platform-logo-older-1')),
       findsOneWidget,

@@ -7,6 +7,8 @@ import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/soft_surfaces.dart';
 import '../../accounts/domain/work_platform.dart';
 import '../../accounts/presentation/platform_logo.dart';
+import '../../settings/domain/driver_preferences.dart';
+import '../../settings/domain/measurement_units.dart';
 import '../domain/driving_session.dart';
 import 'shift_control.dart';
 
@@ -23,6 +25,8 @@ class DrivingHero extends StatefulWidget {
     required this.onEndShift,
     this.backgroundLimited = false,
     this.trackingInterrupted = false,
+    this.hourlyFloor = DriverPreferences.defaultHourlyFloor,
+    this.units = const MeasurementUnits(),
     this.refreshInterval = const Duration(seconds: 1),
     this.onUpgradeBackground,
     this.onPause,
@@ -30,10 +34,16 @@ class DrivingHero extends StatefulWidget {
     this.onAutoEnd,
     this.onAddPlatform,
     this.onRemovePlatform,
+    this.onCancel,
   });
 
   final DrivingSession session;
   final Future<void> Function() onEndShift;
+
+  /// Throws the session away instead of banking it. Absent renders no control
+  /// at all, because a driver offered a way out of a shift they cannot actually
+  /// abandon is worse than one who is offered nothing.
+  final Future<void> Function()? onCancel;
 
   /// Switches another app on mid-shift. Null renders the app chips read-only,
   /// which is what a screen with no controller wired should show.
@@ -62,6 +72,14 @@ class DrivingHero extends StatefulWidget {
 
   /// Escalates to background location without leaving the shift.
   final Future<void> Function()? onUpgradeBackground;
+
+  /// The lowest hourly profit this driver considers worth the trip. Drives the
+  /// break-even figure; a floor of zero leaves only the running cost to cover.
+  final double hourlyFloor;
+
+  /// The driver's distance unit and currency. Every figure on this card is
+  /// rendered through it rather than through the app's pinned US formatter.
+  final MeasurementUnits units;
 
   /// How often the displayed clock re-reads the wall clock. Pass null to hold
   /// a single frame.
@@ -124,7 +142,7 @@ class _DrivingHeroState extends State<DrivingHero> {
         children: [
           Row(
             children: [
-              _LiveDot(paused: paused),
+              _LiveDot(paused: paused, pulse: widget.refreshInterval != null),
               const SizedBox(width: Space.sm),
               Expanded(
                 child: Text(
@@ -153,7 +171,7 @@ class _DrivingHeroState extends State<DrivingHero> {
                 '${paused ? 'Paused after' : 'Driving for'} '
                 '${elapsed.inHours} hours '
                 '${elapsed.inMinutes.remainder(60)} minutes, '
-                '${Money.number(session.miles)} miles tracked',
+                '${widget.units.distanceLabel(session.miles)} tracked',
             excludeSemantics: true,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.center,
@@ -175,25 +193,12 @@ class _DrivingHeroState extends State<DrivingHero> {
             ),
           ),
           Space.gapLg,
-          SizedBox(
-            height: 72,
-            child: Row(
-              children: [
-                Expanded(
-                  child: _LiveMetric(
-                    label: 'Miles',
-                    value: '${Money.number(session.miles)} mi',
-                  ),
-                ),
-                const SizedBox(width: Space.sm),
-                Expanded(
-                  child: _LiveMetric(
-                    label: 'Estimated cost',
-                    value: Money.cents(session.estimatedVehicleCost),
-                  ),
-                ),
-              ],
-            ),
+          _LiveStats(
+            elapsed: elapsed,
+            hourlyFloor: widget.hourlyFloor,
+            runningCost: session.estimatedVehicleCost,
+            miles: session.miles,
+            units: widget.units,
           ),
           // Cost stays visible while it accrues. Hiding it until the end would
           // let a driver finish before learning that the shift was expensive.
@@ -216,7 +221,8 @@ class _DrivingHeroState extends State<DrivingHero> {
             Space.gapLg,
             Center(
               child: ShiftControl(
-                diameter: 80,
+                // Left at the shared default so the target is the same size in
+                // every state, including the idle card this replaces.
                 state: paused
                     ? ShiftControlState.paused
                     : ShiftControlState.driving,
@@ -237,15 +243,36 @@ class _DrivingHeroState extends State<DrivingHero> {
           // Kept a plain full-width button rather than folded into the round
           // control: it is the one action here that cannot be taken back, so
           // it should not sit under the thumb that pauses.
-          OutlinedButton(
+          //
+          // Filled and in the app's own green, not dressed as a warning:
+          // finishing a shift is the ordinary, expected end of this screen and
+          // the step that banks the hours. Throwing them away is the button
+          // below, and that one is the one wearing red.
+          FilledButton(
             key: const ValueKey('end-shift-button'),
             onPressed: _ending ? null : _end,
-            style: OutlinedButton.styleFrom(
-              foregroundColor: colors.error,
-              side: BorderSide(color: colors.error.withValues(alpha: .38)),
+            style: FilledButton.styleFrom(
+              minimumSize: const Size.fromHeight(52),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(Radii.sm),
+              ),
             ),
-            child: Text(_ending ? 'Ending…' : 'End shift'),
+            child: Text(_ending ? 'Ending…' : 'End session'),
           ),
+          if (widget.onCancel != null) ...[
+            Space.gapXs,
+            // Text, not a second filled button: it competes with nothing, and
+            // the only driver who should find it is the one looking for it.
+            TextButton(
+              key: const ValueKey('cancel-session-button'),
+              onPressed: _ending ? null : () => widget.onCancel!(),
+              style: TextButton.styleFrom(
+                foregroundColor: colors.error,
+                minimumSize: const Size.fromHeight(48),
+              ),
+              child: const Text('Cancel session'),
+            ),
+          ],
         ],
       ),
     );
@@ -275,7 +302,8 @@ class _DrivingHeroState extends State<DrivingHero> {
 /// rather than deleting anything, the shift keeps running, and switching it
 /// back on is one more tap. The last remaining app has no remove control at
 /// all — a shift running nothing has no one to attribute the earnings to, and
-/// a driver who wants that wants End shift, which is its own deliberate button.
+/// a driver who wants that wants End session, which is its own deliberate
+/// button.
 class _AppsRow extends StatelessWidget {
   const _AppsRow({required this.live, this.onAdd, this.onRemove});
 
@@ -376,6 +404,182 @@ class _AppChip extends StatelessWidget {
   }
 }
 
+/// The numbers this shift is running up, on one raised surface.
+///
+/// One card rather than a loose block and two tiles: the break-even figure is
+/// computed from the miles and the cost sitting under it, so putting them on
+/// separate surfaces asked the driver to connect three things that are really
+/// one reading. The card is lifted off the hero's tint so the whole reading
+/// separates from the clock and the controls around it.
+class _LiveStats extends StatelessWidget {
+  const _LiveStats({
+    required this.elapsed,
+    required this.hourlyFloor,
+    required this.runningCost,
+    required this.miles,
+    required this.units,
+  });
+
+  final Duration elapsed;
+  final double hourlyFloor;
+  final double runningCost;
+
+  /// Always stored in miles; converted on the way to the label.
+  final double miles;
+  final MeasurementUnits units;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      padding: const EdgeInsets.all(Space.lg),
+      decoration: BoxDecoration(
+        // Lifted off whatever the hero is tinted with rather than painted a
+        // fixed colour: the hero fills green while driving and near-black on a
+        // break, and a fixed surface fill vanished into the paused card.
+        color: isDark
+            ? colors.onSurface.withValues(alpha: .06)
+            : Colors.white.withValues(alpha: .9),
+        borderRadius: BorderRadius.circular(Radii.md),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _BreakEven(
+            elapsed: elapsed,
+            hourlyFloor: hourlyFloor,
+            runningCost: runningCost,
+            units: units,
+          ),
+          Space.gapLg,
+          Divider(
+            height: 1,
+            thickness: 1,
+            color: colors.outlineVariant.withValues(alpha: .5),
+          ),
+          Space.gapLg,
+          IntrinsicHeight(
+            child: Row(
+              children: [
+                Expanded(
+                  child: _LiveMetric(
+                    // Named for whichever unit the driver picked, so a metric
+                    // driver is not told their kilometres are miles.
+                    label: units.distance.label,
+                    value: units.distanceLabel(miles),
+                  ),
+                ),
+                const _VerticalRule(),
+                Expanded(
+                  child: _LiveMetric(
+                    // "Estimated" said how sure the figure is; "running" says
+                    // what it is doing, which is the part that changes while
+                    // the driver watches it.
+                    label: 'Running cost',
+                    value: units.cents(runningCost),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// What this shift has to have earned, so far, to have been worth taking.
+///
+/// The one figure on the card a driver cannot work out in their head mid-shift:
+/// their own hourly floor multiplied by the time actually counted, plus the
+/// vehicle cost the miles have already run up. Everything else here — the
+/// clock, the miles, the cost — is an input to it.
+///
+/// It is deliberately a target and not a score: the app does not know what the
+/// platforms have paid until the shift ends and the driver enters it, so this
+/// says what the number has to beat rather than pretending to know it.
+class _BreakEven extends StatelessWidget {
+  const _BreakEven({
+    required this.elapsed,
+    required this.hourlyFloor,
+    required this.runningCost,
+    required this.units,
+  });
+
+  final Duration elapsed;
+  final double hourlyFloor;
+  final double runningCost;
+  final MeasurementUnits units;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    // Seconds, not `inHours`: whole hours would hold the figure at the floor's
+    // first multiple for an hour at a time, which reads as a broken counter on
+    // a card that ticks every second.
+    final target =
+        hourlyFloor * (elapsed.inSeconds / Duration.secondsPerHour) +
+        runningCost;
+
+    return Semantics(
+      label:
+          'Earn ${units.cents(target)} to break even, '
+          '${units.cents(hourlyFloor)} per hour floor plus '
+          '${units.cents(runningCost)} running cost',
+      excludeSemantics: true,
+      child: Column(
+        key: const ValueKey('earn-to-break-even'),
+        // Left, with the label and the working stacked flush under it, so the
+        // three lines read as one statement and line up with the metrics below.
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'EARN TO BREAK EVEN',
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: colors.onSurfaceVariant,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.1,
+            ),
+          ),
+          Space.gapXs,
+          Text(
+            units.cents(target),
+            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+              color: colors.onSurface,
+              fontWeight: FontWeight.w800,
+              fontFeatures: tabularFigures,
+            ),
+          ),
+          Space.gapXs,
+          // Shows its own working, so the figure is never a number the app
+          // simply asserts — and so a driver who disagrees with it knows which
+          // setting to go and change.
+          Text(
+            '${units.cents(hourlyFloor)}/hr floor + '
+            '${units.cents(runningCost)} running cost',
+            maxLines: 2,
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: colors.onSurfaceVariant),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _VerticalRule extends StatelessWidget {
+  const _VerticalRule();
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: 1,
+    margin: const EdgeInsets.symmetric(horizontal: Space.md),
+    color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: .5),
+  );
+}
+
 class _LiveMetric extends StatelessWidget {
   const _LiveMetric({required this.label, required this.value});
 
@@ -385,40 +589,29 @@ class _LiveMetric extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: Space.md,
-        vertical: Space.sm,
-      ),
-      decoration: BoxDecoration(
-        color: colors.surface.withValues(alpha: .55),
-        borderRadius: BorderRadius.circular(Radii.sm),
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: Theme.of(
-              context,
-            ).textTheme.labelSmall?.copyWith(color: colors.onSurfaceVariant),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: Theme.of(
+            context,
+          ).textTheme.labelSmall?.copyWith(color: colors.onSurfaceVariant),
+        ),
+        const SizedBox(height: Space.xs),
+        Text(
+          value,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+            color: colors.onSurface,
+            fontWeight: FontWeight.w800,
+            fontFeatures: tabularFigures,
           ),
-          const SizedBox(height: Space.xs),
-          Text(
-            value,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              color: colors.onSurface,
-              fontWeight: FontWeight.w800,
-              fontFeatures: tabularFigures,
-            ),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
@@ -476,21 +669,111 @@ class _PausedNotice extends StatelessWidget {
 /// Makes it unmistakable that tracking is running, which is both a usability
 /// and a privacy obligation.
 ///
-/// Deliberately static and shadow-free. The status label and running clock make
-/// the state clear without adding motion or glow to a screen used while moving.
-class _LiveDot extends StatelessWidget {
-  const _LiveDot({this.paused = false});
+/// The core dot is solid; a halo swells out of it and fades, once a beat, only
+/// while the session is actually counting. The motion is what separates
+/// "recording" from "stopped" at a glance — a paused session holds a still dot,
+/// so the two states can never be confused by a driver who glances at the card
+/// for half a second.
+class _LiveDot extends StatefulWidget {
+  const _LiveDot({this.paused = false, this.pulse = true});
 
   final bool paused;
+
+  /// Whether the halo beats. The parent passes false wherever it has frozen
+  /// its own ticker: a loop that never ends means a frame is always scheduled,
+  /// which hangs `pumpAndSettle` in every test that reaches this screen.
+  final bool pulse;
+
+  @override
+  State<_LiveDot> createState() => _LiveDotState();
+}
+
+class _LiveDotState extends State<_LiveDot>
+    with SingleTickerProviderStateMixin {
+  static const _diameter = 18.0;
+  static const _core = 8.0;
+
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1600),
+  );
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _syncTicker();
+  }
+
+  @override
+  void didUpdateWidget(covariant _LiveDot old) {
+    super.didUpdateWidget(old);
+    _syncTicker();
+  }
+
+  /// Runs only while the session is counting, and never when the platform has
+  /// asked for reduced motion.
+  void _syncTicker() {
+    final shouldBeat =
+        widget.pulse &&
+        !widget.paused &&
+        !MediaQuery.disableAnimationsOf(context);
+    if (shouldBeat == _controller.isAnimating) return;
+    if (shouldBeat) {
+      _controller.repeat();
+    } else {
+      _controller
+        ..stop()
+        ..value = 0;
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final color = paused ? colors.onSurfaceVariant : colors.primary;
-    return Container(
-      width: 8,
-      height: 8,
-      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+    final color = widget.paused ? colors.onSurfaceVariant : colors.primary;
+    return SizedBox(
+      width: _diameter,
+      height: _diameter,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          AnimatedBuilder(
+            animation: _controller,
+            builder: (context, _) {
+              final beat = _controller.value;
+              // Eased growth against a linear fade. Easing both together made
+              // the halo dim faster than it grew, which left it invisible for
+              // most of the beat.
+              final grow = Curves.easeOut.transform(beat);
+              return Opacity(
+                // Fades as it grows, so the halo dissolves at the edge rather
+                // than snapping back to the dot at the end of each beat.
+                opacity: (1 - beat) * .45,
+                child: Container(
+                  // Starts flush with the core dot and swells to fill the box.
+                  width: _core + (_diameter - _core) * grow,
+                  height: _core + (_diameter - _core) * grow,
+                  decoration: BoxDecoration(
+                    color: color,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              );
+            },
+          ),
+          Container(
+            width: _core,
+            height: _core,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+        ],
+      ),
     );
   }
 }

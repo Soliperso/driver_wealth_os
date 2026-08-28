@@ -62,6 +62,8 @@ void main() {
     await tester.pump();
 
     now = startedAt.add(const Duration(hours: 5, minutes: 15));
+    await tester.ensureVisible(find.byKey(const ValueKey('end-shift-button')));
+    await tester.pump();
     await tester.tap(find.byKey(const ValueKey('end-shift-button')));
     await tester.pumpAndSettle();
 
@@ -77,6 +79,12 @@ void main() {
     // The shift is not saved yet, but it is not gone either.
     expect(store.snapshot.shifts, isEmpty);
     expect(store.snapshot.pendingDraft, isNotNull);
+    // Back to the top of the list: reaching End session scrolled it down, and
+    // the recovery card sits above everything else on the screen.
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('pending-draft-card')),
+      -200,
+    );
     expect(find.byKey(const ValueKey('pending-draft-card')), findsOneWidget);
     expect(find.textContaining('5h 15m'), findsOneWidget);
   });
@@ -151,7 +159,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // Keeping is the safe default, and it must actually keep.
-    expect(find.text('Discard tracked shift?'), findsOneWidget);
+    expect(find.text('Discard tracked session?'), findsOneWidget);
     await tester.tap(find.text('Keep'));
     await tester.pumpAndSettle();
     expect(store.snapshot.pendingDraft, isNotNull);

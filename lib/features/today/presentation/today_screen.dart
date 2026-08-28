@@ -10,6 +10,8 @@ import '../../accounts/presentation/platform_logo.dart';
 import '../../driving/domain/driving_session.dart';
 import '../../driving/presentation/driving_hero.dart';
 import '../../driving/presentation/shift_control.dart';
+import '../../settings/domain/driver_preferences.dart';
+import '../../settings/domain/measurement_units.dart';
 import '../../shifts/domain/shift.dart';
 import '../../shifts/domain/shift_summary.dart';
 
@@ -22,16 +24,20 @@ class TodayScreen extends StatelessWidget {
     required this.onAddShift,
     required this.onDailyGoalChanged,
     this.onOpenShift,
+    this.onOpenHistory,
     this.onOpenSettings,
     this.onRefresh,
     this.drivingSession,
     this.drivingBackgroundLimited = false,
     this.drivingTrackingInterrupted = false,
+    this.hourlyFloor = DriverPreferences.defaultHourlyFloor,
+    this.units = const MeasurementUnits(),
     this.onStartDriving,
     this.onEndShift,
     this.onPauseDriving,
     this.onResumeDriving,
     this.onAutoEndShift,
+    this.onCancelDriving,
     this.onUpgradeBackground,
     this.onAddDrivingPlatform,
     this.onRemoveDrivingPlatform,
@@ -48,6 +54,9 @@ class TodayScreen extends StatelessWidget {
   final VoidCallback onAddShift;
   final ValueChanged<double> onDailyGoalChanged;
   final ValueChanged<Shift>? onOpenShift;
+
+  /// Switches to the History tab. Null hides the link out of Recent sessions.
+  final VoidCallback? onOpenHistory;
   final VoidCallback? onOpenSettings;
   final Future<void> Function()? onRefresh;
 
@@ -55,11 +64,21 @@ class TodayScreen extends StatelessWidget {
   final DrivingSession? drivingSession;
   final bool drivingBackgroundLimited;
   final bool drivingTrackingInterrupted;
+
+  /// Passed to the live card's break-even figure. See [DrivingHero.hourlyFloor].
+  final double hourlyFloor;
+
+  /// The driver's distance unit and currency. Every figure on this screen goes
+  /// through it, so nothing here is fixed to miles or to dollars.
+  final MeasurementUnits units;
   final VoidCallback? onStartDriving;
   final Future<void> Function()? onEndShift;
   final Future<void> Function()? onPauseDriving;
   final Future<void> Function()? onResumeDriving;
   final VoidCallback? onAutoEndShift;
+
+  /// Abandons the running session without banking a shift.
+  final Future<void> Function()? onCancelDriving;
   final Future<void> Function()? onUpgradeBackground;
 
   /// Switches apps on and off without interrupting the running shift.
@@ -150,6 +169,7 @@ class TodayScreen extends StatelessWidget {
               if (pendingDraft != null && drivingSession == null) ...[
                 _TrackedDraftCard(
                   draft: pendingDraft!,
+                  units: units,
                   onResume: onResumeDraft,
                   onDiscard: onDiscardDraft,
                 ),
@@ -162,10 +182,13 @@ class TodayScreen extends StatelessWidget {
                   session: drivingSession!,
                   backgroundLimited: drivingBackgroundLimited,
                   trackingInterrupted: drivingTrackingInterrupted,
+                  hourlyFloor: hourlyFloor,
+                  units: units,
                   onEndShift: onEndShift ?? () async {},
                   onPause: onPauseDriving,
                   onResume: onResumeDriving,
                   onAutoEnd: onAutoEndShift,
+                  onCancel: onCancelDriving,
                   onUpgradeBackground: onUpgradeBackground,
                   onAddPlatform: onAddDrivingPlatform,
                   onRemovePlatform: onRemoveDrivingPlatform,
@@ -177,6 +200,7 @@ class TodayScreen extends StatelessWidget {
                   keepRate: keepRate,
                   target: target,
                   hasShifts: summary.shiftCount > 0,
+                  units: units,
                   onEditGoal: () => _editDailyGoal(context),
                 ),
                 const SizedBox(height: 16),
@@ -190,7 +214,7 @@ class TodayScreen extends StatelessWidget {
                     alignment: Alignment.center,
                     child: TextButton(
                       onPressed: onAddShift,
-                      child: const Text('Enter a shift manually'),
+                      child: const Text('Enter a session manually'),
                     ),
                   ),
               ],
@@ -201,6 +225,7 @@ class TodayScreen extends StatelessWidget {
                   netPerMile: summary.miles == 0 ? null : summary.netPerMile,
                   miles: summary.miles,
                   shiftCount: summary.shiftCount,
+                  units: units,
                 ),
                 const SizedBox(height: 16),
                 _NextMove(
@@ -210,6 +235,8 @@ class TodayScreen extends StatelessWidget {
                     target: target,
                     keepRate: keepRate,
                     netPerHour: summary.netPerHour,
+                    hourlyFloor: hourlyFloor,
+                    units: units,
                   ),
                 ),
               ],
@@ -217,11 +244,12 @@ class TodayScreen extends StatelessWidget {
               // having any history at all rather than on having driven today.
               if (recentShifts.isNotEmpty) ...[
                 const SizedBox(height: 28),
-                _SectionHeader(onAddShift: onAddShift),
+                _SectionHeader(onViewHistory: onOpenHistory),
                 const SizedBox(height: 12),
                 ...recentShifts.map(
                   (shift) => _ShiftRow(
                     shift: shift,
+                    units: units,
                     onTap: onOpenShift == null
                         ? null
                         : () => onOpenShift!(shift),
@@ -242,27 +270,39 @@ class TodayScreen extends StatelessWidget {
     required double target,
     required double keepRate,
     required double netPerHour,
+    required double hourlyFloor,
+    required MeasurementUnits units,
   }) {
+    final toGo = units.whole((target - net).clamp(0, target).toDouble());
     if (!hasShifts) {
-      return 'Add one completed shift to reveal your true hourly profit and keep rate.';
+      return 'Add one completed session to reveal your true hourly profit and keep rate.';
     }
     if (net < 0) {
-      return 'Today’s driving cost ${Money.cents(net.abs())} more than it earned. '
-          'Check the shift’s mileage and expenses before repeating this pattern.';
+      return 'Today’s driving cost ${units.cents(net.abs())} more than it earned. '
+          'Check the session’s mileage and expenses before repeating this pattern.';
     }
     if (net >= target) {
-      return 'You reached today’s profit goal. Review this shift before deciding whether more driving is worth it.';
+      return 'You reached today’s profit goal. Review this session before deciding whether more driving is worth it.';
     }
-    if (keepRate < .65) {
-      return 'Your keep rate is below 65%. Check mileage and direct costs before repeating this shift pattern.';
+    if (keepRate < _lowKeepRate) {
+      return 'Your keep rate is below ${Money.percent(_lowKeepRate)}. Check '
+          'mileage and direct costs before repeating this pattern.';
     }
-    if (netPerHour >= 25) {
-      return 'This is a healthy hourly pace. You’re '
-          '${Money.whole((target - net).clamp(0, target).toDouble())} from today’s goal.';
+    // Measured against the driver's own floor, not a number the app picked:
+    // $25/hr is a healthy pace in one city and a losing one in another, and the
+    // driver has already told Settings which they are.
+    if (hourlyFloor > 0 && netPerHour >= hourlyFloor) {
+      return 'This is a healthy hourly pace, above your '
+          '${units.cents(hourlyFloor)}/hr floor. You’re $toGo from today’s goal.';
     }
-    return 'You’re ${Money.whole((target - net).clamp(0, target).toDouble())} '
-        'from today’s goal. Compare your next shift’s hours and miles carefully.';
+    return 'You’re $toGo from today’s goal. Compare your next session’s hours '
+        'and miles carefully.';
   }
+
+  /// Where "most of what you earned went to running the car" starts. A rule of
+  /// thumb rather than a preference: it is the app's own judgement about the
+  /// shape of a bad shift, not a figure about this driver.
+  static const _lowKeepRate = .65;
 
   static String _formattedDate(DateTime date) {
     const weekdays = [
@@ -416,25 +456,26 @@ class _StartDrivingCard extends StatelessWidget {
     return GlassSurface(
       key: const ValueKey('start-driving-card'),
       padding: const EdgeInsets.all(Space.xl),
+      shadow: false,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // The play glyph that used to sit in a SoftIcon here is now the
           // button itself, so the heading no longer needs its own.
+          //
+          // A status line, not a heading: set like the other eyebrow labels on
+          // this screen so it reads as the state the card is in. It carries no
+          // explanatory line under it — the button below says what tapping it
+          // does, and a paragraph of copy repeated on every idle visit is one
+          // more thing to scroll past.
           Text(
-            'Not driving',
+            'NOT DRIVING',
             textAlign: TextAlign.center,
-            style: Theme.of(
-              context,
-            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: Space.xs),
-          Text(
-            'Track your hours and miles automatically while you work.',
-            textAlign: TextAlign.center,
-            style: Theme.of(
-              context,
-            ).textTheme.bodySmall?.copyWith(color: colors.onSurfaceVariant),
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              color: colors.onSurfaceVariant,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.2,
+            ),
           ),
           Space.gapXl,
           Center(
@@ -446,7 +487,7 @@ class _StartDrivingCard extends StatelessWidget {
           Space.gapMd,
           TextButton(
             onPressed: onEnterManually,
-            child: const Text('Enter a shift manually'),
+            child: const Text('Enter a session manually'),
           ),
         ],
       ),
@@ -462,11 +503,13 @@ class _StartDrivingCard extends StatelessWidget {
 class _TrackedDraftCard extends StatelessWidget {
   const _TrackedDraftCard({
     required this.draft,
+    required this.units,
     required this.onResume,
     required this.onDiscard,
   });
 
   final Shift draft;
+  final MeasurementUnits units;
   final VoidCallback? onResume;
   final VoidCallback? onDiscard;
 
@@ -477,6 +520,7 @@ class _TrackedDraftCard extends StatelessWidget {
       key: const ValueKey('pending-draft-card'),
       padding: const EdgeInsets.all(Space.xl),
       tint: colors.tertiaryContainer.withValues(alpha: .82),
+      shadow: false,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -489,7 +533,7 @@ class _TrackedDraftCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Shift waiting on earnings',
+                      'Session waiting on earnings',
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w700,
                       ),
@@ -497,7 +541,7 @@ class _TrackedDraftCard extends StatelessWidget {
                     const SizedBox(height: Space.xs),
                     Text(
                       '${Money.hours(draft.hours)} and '
-                      '${Money.number(draft.miles)} miles tracked on '
+                      '${units.distanceLabel(draft.miles)} tracked on '
                       '${draft.platform.displayName}. Add what you earned to '
                       'see the profit.',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -513,13 +557,16 @@ class _TrackedDraftCard extends StatelessWidget {
           FilledButton(
             key: const ValueKey('resume-draft-button'),
             onPressed: onResume,
-            child: const Text('ENTER EARNINGS'),
+            // Sentence case like every other button in the app. All-caps read
+            // as shouting on the one card that is already the loudest thing on
+            // the screen.
+            child: const Text('Enter earnings'),
           ),
           const SizedBox(height: Space.xs),
           TextButton(
             key: const ValueKey('discard-draft-button'),
             onPressed: onDiscard,
-            child: const Text('Discard this shift'),
+            child: const Text('Discard this session'),
           ),
         ],
       ),
@@ -541,6 +588,7 @@ class _StorageErrorBanner extends StatelessWidget {
       key: const ValueKey('storage-error-banner'),
       padding: const EdgeInsets.all(Space.lg),
       tint: colors.errorContainer.withValues(alpha: .82),
+      shadow: false,
       child: Row(
         children: [
           Icon(Icons.warning_amber_rounded, color: colors.error),
@@ -565,6 +613,7 @@ class _ProfitHero extends StatelessWidget {
     required this.keepRate,
     required this.target,
     required this.hasShifts,
+    required this.units,
     required this.onEditGoal,
   });
 
@@ -572,6 +621,7 @@ class _ProfitHero extends StatelessWidget {
   final double keepRate;
   final double target;
   final bool hasShifts;
+  final MeasurementUnits units;
   final VoidCallback onEditGoal;
 
   @override
@@ -602,31 +652,15 @@ class _ProfitHero extends StatelessWidget {
       elevation: Elevation.hero,
       padding: const EdgeInsets.all(Space.xl),
       tint: tint,
+      shadow: false,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Container(
-                width: 36,
-                height: 36,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: accent.withValues(alpha: .12),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  switch (goalState) {
-                    _GoalState.loss => Icons.trending_down_rounded,
-                    _GoalState.reached ||
-                    _GoalState.exceeded => Icons.check_rounded,
-                    _ => Icons.paid_outlined,
-                  },
-                  size: 20,
-                  color: accent,
-                ),
-              ),
-              const SizedBox(width: 12),
+              // No badge alongside the eyebrow: the card is already coloured by
+              // its state, and a coin next to the words "true profit" restated
+              // what they say.
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -640,7 +674,7 @@ class _ProfitHero extends StatelessWidget {
                       ),
                     ),
                     Text(
-                      _goalStatus(goalState, net, target),
+                      _goalStatus(goalState),
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                   ],
@@ -671,11 +705,12 @@ class _ProfitHero extends StatelessWidget {
           Semantics(
             liveRegion: true,
             label: hasShifts
-                ? 'True profit today ${Money.cents(net)}'
-                : 'No shifts added today',
+                ? 'True profit today ${units.cents(net)}'
+                : 'No sessions added today',
             child: ExcludeSemantics(
               child: AnimatedMoney(
                 value: net,
+                units: units,
                 style: Theme.of(
                   context,
                 ).textTheme.displaySmall?.copyWith(color: colors.onSurface),
@@ -683,60 +718,6 @@ class _ProfitHero extends StatelessWidget {
             ),
           ),
           Space.gapXl,
-          InkWell(
-            onTap: onEditGoal,
-            borderRadius: BorderRadius.circular(8),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Row(
-                // Label hugs the left, amount hugs the right; the slack sits
-                // between them instead of trailing the amount.
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Flexible(
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Flexible(
-                          child: Text(
-                            'Daily goal',
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.bodySmall
-                                ?.copyWith(fontWeight: FontWeight.w600),
-                          ),
-                        ),
-                        const SizedBox(width: Space.xs + 1),
-                        Icon(
-                          Icons.edit_outlined,
-                          size: 15,
-                          color: colors.onSurfaceVariant,
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: Space.sm),
-                  // Large goals and big losses make this pair long; it shrinks
-                  // rather than running off the card.
-                  Flexible(
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      alignment: Alignment.centerRight,
-                      child: Text(
-                        '${Money.whole(net)} / ${Money.whole(target)}',
-                        maxLines: 1,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: colors.onSurface,
-                          fontWeight: FontWeight.w700,
-                          fontFeatures: tabularFigures,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 9),
           TweenAnimationBuilder<double>(
             tween: Tween(begin: progress, end: progress),
             duration: MediaQuery.disableAnimationsOf(context)
@@ -753,19 +734,115 @@ class _ProfitHero extends StatelessWidget {
                   : accent.withValues(alpha: .13),
             ),
           ),
+          // Below the bar, not above it: the bar is the picture of where the
+          // day stands and this line is its caption.
+          const SizedBox(height: 5),
+          _GoalLine(
+            goalState: goalState,
+            net: net,
+            target: target,
+            units: units,
+            onEditGoal: onEditGoal,
+          ),
         ],
       ),
     );
   }
 
-  static String _goalStatus(_GoalState goalState, double net, double target) =>
-      switch (goalState) {
-        _GoalState.noActivity => 'No shifts added today',
-        _GoalState.loss => 'You spent more than you earned',
-        _GoalState.inProgress => 'After driving costs',
-        _GoalState.reached => 'Daily goal reached',
-        _GoalState.exceeded => 'Goal exceeded by ${Money.cents(net - target)}',
-      };
+  /// Says what the figure below is, not how it compares to the goal — the goal
+  /// line does that now, and stating it twice on one card just made a reached
+  /// goal announce itself in two consecutive sentences.
+  static String _goalStatus(_GoalState goalState) => switch (goalState) {
+    _GoalState.noActivity => 'No sessions added today',
+    _GoalState.loss => 'You spent more than you earned',
+    _ => 'After driving costs',
+  };
+}
+
+/// The tappable goal line under the profit figure.
+///
+/// States the gap rather than the score: `$0 / $100` makes a driver do the
+/// subtraction themselves, and the number they actually act on is how much
+/// further they have to drive. The pencil is what marks the line as an editable
+/// setting rather than another read-only stat on a card full of them.
+class _GoalLine extends StatelessWidget {
+  const _GoalLine({
+    required this.goalState,
+    required this.net,
+    required this.target,
+    required this.units,
+    required this.onEditGoal,
+  });
+
+  final _GoalState goalState;
+  final double net;
+  final double target;
+  final MeasurementUnits units;
+  final VoidCallback onEditGoal;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final body = Theme.of(context).textTheme.bodySmall;
+    final (amount, rest) = _copy;
+
+    return InkWell(
+      key: const ValueKey('daily-goal-line'),
+      onTap: onEditGoal,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Row(
+          children: [
+            // Large goals and big losses make this line long; it shrinks rather
+            // than wrapping or running off the card, and the pencil stays
+            // pinned to the end of the sentence where it reads as its affordance.
+            Flexible(
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text.rich(
+                  TextSpan(
+                    children: [
+                      if (amount != null)
+                        TextSpan(
+                          text: '$amount ',
+                          style: body?.copyWith(
+                            color: colors.onSurface,
+                            fontWeight: FontWeight.w700,
+                            fontFeatures: tabularFigures,
+                          ),
+                        ),
+                      TextSpan(text: rest),
+                    ],
+                  ),
+                  maxLines: 1,
+                  style: body?.copyWith(fontWeight: FontWeight.w600),
+                ),
+              ),
+            ),
+            const SizedBox(width: Space.xs + 1),
+            Icon(Icons.edit_outlined, size: 15, color: colors.onSurfaceVariant),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// The emphasised figure, and the sentence it sits in. Split so the amount
+  /// can carry the weight and the tabular digits while the words around it stay
+  /// quiet — and so a reached goal, which has no gap left to state, can drop
+  /// the figure entirely instead of announcing `$0.00`.
+  (String?, String) get _copy => switch (goalState) {
+    _GoalState.reached => (null, 'Today’s ${units.whole(target)} goal reached'),
+    _GoalState.exceeded => (
+      units.cents(net - target),
+      'past today’s ${units.whole(target)} goal',
+    ),
+    // A loss counts the whole way back plus the hole, which is the real
+    // distance left to drive.
+    _ => (units.cents(target - net), 'to today’s ${units.whole(target)} goal'),
+  };
 }
 
 enum _GoalState {
@@ -796,24 +873,31 @@ class _PerformancePanel extends StatelessWidget {
     required this.netPerMile,
     required this.miles,
     required this.shiftCount,
+    required this.units,
   });
 
   final double? netPerHour;
+
+  /// Per mile as stored; converted to the driver's unit for display.
   final double? netPerMile;
   final double miles;
   final int shiftCount;
+  final MeasurementUnits units;
 
   @override
   Widget build(BuildContext context) => GlassSurface(
     padding: const EdgeInsets.all(20),
+    shadow: false,
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Performance',
-          style: Theme.of(
-            context,
-          ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+          'PERFORMANCE',
+          style: Theme.of(context).textTheme.labelMedium?.copyWith(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 1.1,
+          ),
         ),
         const SizedBox(height: 18),
         LayoutBuilder(
@@ -821,21 +905,27 @@ class _PerformancePanel extends StatelessWidget {
             final stats = [
               _Stat(
                 label: 'Net / hour',
-                value: netPerHour == null ? '—' : Money.cents(netPerHour!),
+                value: netPerHour == null ? '—' : units.cents(netPerHour!),
                 icon: Icons.schedule_rounded,
               ),
               _Stat(
-                label: 'Net / mile',
-                value: netPerMile == null ? '—' : Money.cents(netPerMile!),
+                // Named and converted per the driver's unit: a per-mile figure
+                // shown to a metric driver is wrong by 60%.
+                label: 'Net / ${units.distance.singular}',
+                value: netPerMile == null
+                    ? '—'
+                    : units.cents(units.rateFromPerMile(netPerMile!)),
                 icon: Icons.route_rounded,
               ),
               _Stat(
-                label: 'Miles',
-                value: miles.toStringAsFixed(1),
+                label: units.distance.label,
+                value: units
+                    .distanceValue(miles)
+                    .toStringAsFixed(1),
                 icon: Icons.directions_car_outlined,
               ),
               _Stat(
-                label: 'Shifts',
+                label: 'Sessions',
                 value: '$shiftCount',
                 icon: Icons.work_outline_rounded,
               ),
@@ -946,6 +1036,7 @@ class _NextMove extends StatelessWidget {
     final colors = Theme.of(context).colorScheme;
     return GlassSurface(
       padding: const EdgeInsets.all(18),
+      shadow: false,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -955,17 +1046,24 @@ class _NextMove extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // The same eyebrow as every other section on this screen, so
+                // the card titles read as one system rather than three.
                 Text(
-                  'Your next move',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+                  'YOUR NEXT MOVE',
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    color: colors.onSurfaceVariant,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.1,
+                  ),
                 ),
-                const SizedBox(height: 5),
+                const SizedBox(height: 6),
+                // The message carries the weight, not the label above it: this
+                // card exists for the sentence, and a muted paragraph under a
+                // muted heading gave the reader nothing to land on.
                 Text(
                   message,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: colors.onSurfaceVariant,
+                    color: colors.onSurface,
                     height: 1.45,
                   ),
                 ),
@@ -979,48 +1077,54 @@ class _NextMove extends StatelessWidget {
 }
 
 class _SectionHeader extends StatelessWidget {
-  const _SectionHeader({required this.onAddShift});
+  const _SectionHeader({this.onViewHistory});
 
-  final VoidCallback onAddShift;
+  /// Opens the full history. Absent leaves the header a plain label rather than
+  /// a link that goes nowhere.
+  final VoidCallback? onViewHistory;
 
   @override
-  Widget build(BuildContext context) => Row(
-    children: [
-      Expanded(
-        child: Text(
-          'Recent shifts',
-          style: Theme.of(
-            context,
-          ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-        ),
-      ),
-      OutlinedButton.icon(
-        onPressed: onAddShift,
-        style: OutlinedButton.styleFrom(
-          foregroundColor: Theme.of(context).colorScheme.primary,
-          side: BorderSide(
-            color: Theme.of(
-              context,
-            ).colorScheme.outlineVariant.withValues(alpha: .7),
-          ),
-          minimumSize: const Size(0, 40),
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          visualDensity: VisualDensity.compact,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Row(
+      children: [
+        Expanded(
+          // Set as an eyebrow like the other section labels on this screen: it
+          // names a list that speaks for itself and should not compete with the
+          // figures inside it.
+          child: Text(
+            'RECENT SESSIONS',
+            style: Theme.of(context).textTheme.labelMedium?.copyWith(
+              color: colors.onSurfaceVariant,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.1,
+            ),
           ),
         ),
-        icon: const Icon(Icons.add_rounded, size: 16),
-        label: const Text('Add'),
-      ),
-    ],
-  );
+        if (onViewHistory != null)
+          // A link out, not a second way in: this list is the last five
+          // sessions, and the question it raises is "where are the rest?".
+          // Adding one by hand already has its own control up the screen.
+          TextButton(
+            key: const ValueKey('view-history-link'),
+            onPressed: onViewHistory,
+            style: TextButton.styleFrom(
+              visualDensity: VisualDensity.compact,
+              padding: const EdgeInsets.symmetric(horizontal: Space.sm),
+              minimumSize: const Size(0, 40),
+            ),
+            child: const Text('View history'),
+          ),
+      ],
+    );
+  }
 }
 
 class _ShiftRow extends StatelessWidget {
-  const _ShiftRow({required this.shift, this.onTap});
+  const _ShiftRow({required this.shift, required this.units, this.onTap});
 
   final Shift shift;
+  final MeasurementUnits units;
   final VoidCallback? onTap;
 
   @override
@@ -1073,10 +1177,14 @@ class _ShiftRow extends StatelessWidget {
                           ],
                         ),
                         const SizedBox(height: 2),
+                        // When it was, and how long it ran. Miles used to sit
+                        // here too, but on a row already carrying a platform,
+                        // a date and a profit figure they were the one number
+                        // nobody was reading — and they are on the shift's own
+                        // screen, one tap away.
                         Text(
                           '${_dateLabel(context)} · '
-                          '${shift.hours.toStringAsFixed(1)} hrs · '
-                          '${shift.miles.toStringAsFixed(0)} mi',
+                          '${shift.hours.toStringAsFixed(1)} hr',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: Theme.of(context).textTheme.bodySmall
@@ -1086,25 +1194,18 @@ class _ShiftRow extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: Space.sm),
-                  Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text(
-                        Money.cents(shift.netProfit),
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: isLoss ? colors.error : colors.primary,
-                          fontWeight: FontWeight.w800,
-                          fontFeatures: tabularFigures,
-                        ),
-                      ),
-                      Text(
-                        'Net',
-                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: colors.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
+                  // The figure alone, with no "Net" caption under it. Every
+                  // money figure on this screen is already what was kept — the
+                  // card above says so in letters twice the size — and a label
+                  // on one row of one list only raised the question of what the
+                  // unlabelled ones were.
+                  Text(
+                    units.cents(shift.netProfit),
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: isLoss ? colors.error : colors.primary,
+                      fontWeight: FontWeight.w800,
+                      fontFeatures: tabularFigures,
+                    ),
                   ),
                   if (onTap != null) ...[
                     const SizedBox(width: Space.xs),

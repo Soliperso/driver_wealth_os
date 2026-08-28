@@ -96,6 +96,7 @@ class GlassSurface extends StatelessWidget {
     this.tint,
     this.blur,
     this.elevation = Elevation.raised,
+    this.shadow = true,
   });
 
   final Widget child;
@@ -110,6 +111,13 @@ class GlassSurface extends StatelessWidget {
   /// Which rank this surface occupies. Drives radius, blur, border and shadow
   /// together so a hero reads heavier than a list row.
   final Elevation elevation;
+
+  /// Drops the rank's cast shadow while keeping its radius and blur.
+  ///
+  /// For screens that stack several cards down one scroll: on a near-black
+  /// background the shadows read as smudges between the cards rather than as
+  /// lift, and the tint alone separates them well enough.
+  final bool shadow;
 
   @override
   Widget build(BuildContext context) {
@@ -139,7 +147,7 @@ class GlassSurface extends StatelessWidget {
       ),
     );
 
-    if (elevation.shadowOpacity == 0) return surface;
+    if (!shadow || elevation.shadowOpacity == 0) return surface;
     return DecoratedBox(
       decoration: BoxDecoration(
         borderRadius: borderRadius,

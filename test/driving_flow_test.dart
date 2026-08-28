@@ -67,6 +67,10 @@ void main() {
 
     // Five and a quarter hours later.
     now = startedAt.add(const Duration(hours: 5, minutes: 15));
+    // The live card is taller than the 800×600 test viewport, so the button at
+    // its foot has to be scrolled to before it can be tapped.
+    await tester.ensureVisible(find.byKey(const ValueKey('end-shift-button')));
+    await tester.pump();
     await tester.tap(find.byKey(const ValueKey('end-shift-button')));
     await tester.pump();
     await tester.pumpAndSettle();
@@ -143,7 +147,7 @@ void main() {
     expect(store.snapshot.activeSession, isNull);
     expect(tracker.started, isFalse);
     // The manual route stays available to a driver who said no.
-    expect(find.text('Enter a shift manually'), findsOneWidget);
+    expect(find.text('Enter a session manually'), findsOneWidget);
   });
 
   testWidgets('accepting the disclosure starts a shift and warns that only '
@@ -266,6 +270,10 @@ void main() {
 
     // Two hours in, the driver stops for lunch.
     now = startedAt.add(const Duration(hours: 2));
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('pause-shift-button')),
+    );
+    await tester.pump();
     await tester.tap(find.byKey(const ValueKey('pause-shift-button')));
     await tester.pumpAndSettle();
 
@@ -281,6 +289,10 @@ void main() {
 
     // Forty-five minutes later they are back on the road.
     now = startedAt.add(const Duration(hours: 2, minutes: 45));
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('resume-shift-button')),
+    );
+    await tester.pump();
     await tester.tap(find.byKey(const ValueKey('resume-shift-button')));
     await tester.pumpAndSettle();
 
@@ -289,6 +301,10 @@ void main() {
 
     // Finishing at 11:17 wall clock, but only 4.5 hours of it were worked.
     now = startedAt.add(const Duration(hours: 5, minutes: 15));
+    // The live card is taller than the 800×600 test viewport, so the button at
+    // its foot has to be scrolled to before it can be tapped.
+    await tester.ensureVisible(find.byKey(const ValueKey('end-shift-button')));
+    await tester.pump();
     await tester.tap(find.byKey(const ValueKey('end-shift-button')));
     await tester.pumpAndSettle();
 
@@ -382,6 +398,61 @@ void main() {
     expect(find.byKey(const ValueKey('pending-draft-card')), findsOneWidget);
     expect(store.snapshot.pendingDraft!.hours, closeTo(3, .01));
     // No earnings form was thrown in front of whatever they were doing.
+    expect(find.text('How much did you earn?'), findsNothing);
+  });
+
+  testWidgets('cancelling a session throws it away, and asks first', (
+    tester,
+  ) async {
+    final tracker = FakeLocationTracker();
+    addTearDown(tracker.dispose);
+
+    final store = MemoryAppStore(
+      AppSnapshot(
+        driverName: 'Ahmed',
+        activeSession: DrivingSession.single(
+          id: 'session-1',
+          startedAt: DateTime.now().subtract(const Duration(hours: 2)),
+          platform: WorkPlatform.uber,
+          distanceMeters: 16000,
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(
+      DriverWealthApp(
+        store: store,
+        locationTracker: tracker,
+        drivingRefreshInterval: null,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('cancel-session-button')),
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('cancel-session-button')));
+    await tester.pumpAndSettle();
+
+    // Backing out of the dialog leaves the shift exactly as it was.
+    await tester.tap(find.text('Keep driving'));
+    await tester.pumpAndSettle();
+    expect(store.snapshot.activeSession, isNotNull);
+
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('cancel-session-button')),
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('cancel-session-button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('confirm-cancel-session')));
+    await tester.pumpAndSettle();
+
+    // Gone, and unlike End session it banks no draft to come back to.
+    expect(store.snapshot.activeSession, isNull);
+    expect(store.snapshot.pendingDraft, isNull);
+    expect(find.byKey(const ValueKey('driving-session-active')), findsNothing);
     expect(find.text('How much did you earn?'), findsNothing);
   });
 }

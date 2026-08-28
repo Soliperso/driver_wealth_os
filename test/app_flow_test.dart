@@ -20,7 +20,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('TRUE PROFIT'), findsOneWidget);
-    expect(find.text('Enter a shift manually'), findsOneWidget);
+    expect(find.text('Enter a session manually'), findsOneWidget);
   });
 
   testWidgets('work account flow lists supported platforms', (tester) async {
@@ -69,7 +69,7 @@ void main() {
     await tester.tap(continueButton);
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Daily goal'));
+    await tester.tap(find.byKey(const ValueKey('daily-goal-line')));
     await tester.pumpAndSettle();
     expect(find.text('Daily profit goal'), findsOneWidget);
 
@@ -77,7 +77,10 @@ void main() {
     await tester.tap(find.text('Save goal'));
     await tester.pumpAndSettle();
 
-    expect(find.text(r'$0 / $325'), findsOneWidget);
+    expect(
+      find.textContaining(r'to today’s $325 goal'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('successful work account connection shows connected status', (
@@ -139,7 +142,10 @@ void main() {
       find.byKey(const ValueKey('daily-goal-state-exceeded')),
       findsOneWidget,
     );
-    expect(find.text(r'Goal exceeded by $5.00'), findsOneWidget);
+    expect(
+      find.textContaining(r'$5.00 past today’s $300 goal'),
+      findsOneWidget,
+    );
     await tester.scrollUntilVisible(
       find.byKey(const ValueKey('shift-platform-logo-goal-test')),
       200,
@@ -177,7 +183,7 @@ void main() {
       find.byKey(const ValueKey('daily-goal-state-reached')),
       findsOneWidget,
     );
-    expect(find.text('Daily goal reached'), findsOneWidget);
+    expect(find.textContaining(r'Today’s $300 goal reached'), findsOneWidget);
   });
 
   testWidgets('manual shift saves once and returns to dashboard', (
@@ -188,7 +194,7 @@ void main() {
     await tester.ensureVisible(find.text('Continue'));
     await tester.tap(find.text('Continue'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Enter a shift manually'));
+    await tester.tap(find.text('Enter a session manually'));
     await tester.pumpAndSettle();
 
     final fields = find.byType(TextFormField);
@@ -206,8 +212,8 @@ void main() {
     await tester.tap(find.text('Save to Today'));
     await tester.pumpAndSettle();
 
-    await tester.scrollUntilVisible(find.text('Recent shifts'), 200);
-    expect(find.text('Recent shifts'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('RECENT SESSIONS'), 200);
+    expect(find.text('RECENT SESSIONS'), findsOneWidget);
     // Scrolled to on its own rather than assumed to be near the heading: the
     // rows below it sit outside the viewport and are not built until reached.
     final manualLogo = find.byWidgetPredicate(

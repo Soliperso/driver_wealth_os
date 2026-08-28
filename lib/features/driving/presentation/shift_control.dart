@@ -34,7 +34,7 @@ class ShiftControl extends StatelessWidget {
     required this.state,
     required this.onPressed,
     this.ringProgress = 0,
-    this.diameter = 96,
+    this.diameter = 120,
   });
 
   final ShiftControlState state;
@@ -45,6 +45,11 @@ class ShiftControl extends StatelessWidget {
   /// Purely indicative: no figure the driver is paid on is read from it, so a
   /// frozen ticker costs nothing but a stale sweep.
   final double ringProgress;
+
+  /// Outer diameter, bezel included. The default is deliberately large and the
+  /// same in all three states: this is the only control on the screen a driver
+  /// reaches for while the car is stopped at a light, and it must not shrink
+  /// or move between starting, pausing and resuming.
   final double diameter;
 
   /// Clear air between the ring and the button, so the ring reads as a bezel
@@ -60,7 +65,10 @@ class ShiftControl extends StatelessWidget {
         colors.primary,
         colors.onPrimary,
         Icons.play_arrow_rounded,
-        'Start',
+        // Names the thing being started. "Start" alone leaves a driver to infer
+        // it from the card, and this button also sits next to "Enter a shift
+        // manually", which starts nothing.
+        'Start Driving',
         'Start driving',
       ),
       ShiftControlState.driving => (

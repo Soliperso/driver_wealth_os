@@ -230,7 +230,7 @@ void main() {
       final sync = await pumpSignedIn(tester, store: store);
       sync.calls.clear();
 
-      await tester.tap(find.text('Enter a shift manually'));
+      await tester.tap(find.text('Enter a session manually'));
       await tester.pumpAndSettle();
       final fields = find.byType(TextFormField);
       await tester.enterText(fields.at(0), '250');

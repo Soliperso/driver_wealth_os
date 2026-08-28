@@ -152,7 +152,7 @@ void main() {
     await tester.pumpWidget(DriverWealthApp(store: store));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Enter a shift manually'));
+    await tester.tap(find.text('Enter a session manually'));
     await tester.pumpAndSettle();
 
     final rateField = tester.widget<TextFormField>(

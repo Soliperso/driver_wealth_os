@@ -50,8 +50,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Hi, Ahmed!'), findsOneWidget);
-    expect(find.text(r'$250 / $300'), findsOneWidget);
-    await tester.scrollUntilVisible(find.text('Recent shifts'), 200);
+    expect(find.textContaining(r'$50.00 to today’s $300 goal'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('RECENT SESSIONS'), 200);
     await tester.scrollUntilVisible(find.text('Uber'), 100);
     expect(find.text('Uber'), findsOneWidget);
 
@@ -61,7 +61,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Hi, Ahmed!'), findsOneWidget);
-    expect(find.text(r'$250 / $300'), findsOneWidget);
+    expect(find.textContaining(r'$50.00 to today’s $300 goal'), findsOneWidget);
   });
 
   testWidgets('history supports detail, edit, and delete', (tester) async {

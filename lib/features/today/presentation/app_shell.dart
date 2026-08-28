@@ -376,6 +376,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         onAddShift: () => _addShift(returnToToday: true),
         onDailyGoalChanged: widget.onDailyGoalChanged,
         onOpenShift: _openShift,
+        onOpenHistory: () => setState(() => _index = 1),
         onOpenSettings: () => setState(() => _index = 3),
         onRefresh: widget.onRefreshEarnings,
         drivingSession: widget.drivingController?.session,
@@ -383,6 +384,8 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
             widget.drivingController?.backgroundLimited ?? false,
         drivingTrackingInterrupted:
             widget.drivingController?.trackingInterrupted ?? false,
+        hourlyFloor: widget.hourlyFloor,
+        units: _preferences.units,
         onStartDriving: widget.drivingController == null ? null : _startDriving,
         onEndShift: widget.drivingController == null ? null : _endShift,
         onPauseDriving: widget.drivingController == null ? null : _pauseDriving,
@@ -390,6 +393,9 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
             ? null
             : _resumeDriving,
         onAutoEndShift: widget.drivingController == null ? null : _autoEndShift,
+        onCancelDriving: widget.drivingController == null
+            ? null
+            : _cancelDriving,
         onUpgradeBackground: widget.drivingController == null
             ? null
             : _upgradeBackground,
@@ -701,6 +707,44 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     );
   }
 
+  /// Throws the running session away without banking a shift.
+  ///
+  /// For the shift that should never have been recorded — the tracker left
+  /// running on the drive home, a session started by accident. Confirmed like
+  /// the draft discard, and for the same reason: it destroys tracked driving,
+  /// and it is the only control on the live card that cannot be undone.
+  Future<void> _cancelDriving() async {
+    final controller = widget.drivingController;
+    final session = controller?.session;
+    if (controller == null || session == null) return;
+
+    final elapsed = session.elapsed();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Cancel this session?'),
+        content: Text(
+          '${Money.hours(elapsed.inMinutes / 60)} and '
+          '${_preferences.units.distanceLabel(session.miles)} have been '
+          'tracked. Cancelling '
+          'throws them away — nothing is saved to Today.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Keep driving'),
+          ),
+          FilledButton(
+            key: const ValueKey('confirm-cancel-session'),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Cancel session'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) await controller.discard();
+  }
+
   Future<void> _endShift() async {
     final controller = widget.drivingController;
     if (controller == null) return;
@@ -766,10 +810,11 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Discard tracked shift?'),
+        title: const Text('Discard tracked session?'),
         content: Text(
-          '${Money.hours(draft.hours)} and ${Money.number(draft.miles)} miles '
-          'were tracked. Discarding this cannot be undone.',
+          '${Money.hours(draft.hours)} and '
+          '${_preferences.units.distanceLabel(draft.miles)} were tracked. '
+          'Discarding this cannot be undone.',
         ),
         actions: [
           TextButton(
