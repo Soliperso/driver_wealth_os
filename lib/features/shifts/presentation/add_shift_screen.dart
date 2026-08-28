@@ -24,7 +24,7 @@ class AddShiftScreen extends StatefulWidget {
 
   /// The shift came from a just-finished driving session: hours and miles were
   /// measured, so the screen frames itself as "enter your earnings" rather
-  /// than "edit a saved shift".
+  /// than "edit a saved session".
   final bool isNewFromSession;
 
   /// Seeds the rate field for a new shift. Editing an existing shift uses that
@@ -106,10 +106,10 @@ class _AddShiftScreenState extends State<AddShiftScreen> {
   @override
   Widget build(BuildContext context) => SoftScaffold(
     title: widget.isNewFromSession
-        ? 'Shift complete'
+        ? 'Session complete'
         : _editing
-        ? 'Edit shift'
-        : 'Add completed shift',
+        ? 'Edit session'
+        : 'Add completed session',
     body: PageFrame(
       maxWidth: 680,
       child: SingleChildScrollView(
@@ -120,7 +120,7 @@ class _AddShiftScreenState extends State<AddShiftScreen> {
               widget.isNewFromSession
                   ? 'How much did you earn?'
                   : _editing
-                  ? 'Update the shift details.'
+                  ? 'Update the session details.'
                   : 'Turn earnings into a true-profit picture.',
               style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                 fontWeight: FontWeight.w700,
@@ -133,7 +133,7 @@ class _AddShiftScreenState extends State<AddShiftScreen> {
                   ? 'Your time and mileage were tracked. Add what the platform paid and any costs.'
                   : _editing
                   ? 'Your profit will be recalculated before the changes are saved.'
-                  : 'Enter the totals from one finished shift. We’ll handle the math.',
+                  : 'Enter the totals from one finished session. We’ll handle the math.',
               style: TextStyle(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
@@ -197,7 +197,7 @@ class _AddShiftScreenState extends State<AddShiftScreen> {
                     ],
                     const SizedBox(height: 6),
                     Text(
-                      'When you drove decides which day-and-time pattern this shift grades.',
+                      'When you drove decides which day-and-time pattern this session grades.',
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                     const SizedBox(height: 14),
@@ -365,7 +365,7 @@ class _AddShiftScreenState extends State<AddShiftScreen> {
         Text(
           'Total gross ${Money.cents(_enteredGross())} across '
           '${_lines.length} apps. Your hours, miles and costs below are '
-          'counted once for the whole shift.',
+          'counted once for the whole session.',
           key: const ValueKey('earnings-total'),
           style: Theme.of(context).textTheme.bodySmall,
         ),
@@ -464,7 +464,7 @@ class _AddShiftScreenState extends State<AddShiftScreen> {
     final picked = await showTimePicker(
       context: context,
       initialTime: TimeOfDay.fromDateTime(_completedAt),
-      helpText: 'Time the shift finished',
+      helpText: 'Time the session finished',
     );
     if (picked == null) return;
     setState(() {
@@ -486,7 +486,7 @@ class _AddShiftScreenState extends State<AddShiftScreen> {
     final inFuture = _completedAt.isAfter(DateTime.now());
     setState(
       () => _completedAtError = inFuture
-          ? 'This shift finishes in the future. Pick a time that has already passed.'
+          ? 'This session finishes in the future. Pick a time that has already passed.'
           : null,
     );
     if (!formValid || inFuture) return;

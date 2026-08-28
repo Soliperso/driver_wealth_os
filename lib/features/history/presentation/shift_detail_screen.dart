@@ -34,7 +34,7 @@ class _ShiftDetailScreenState extends State<ShiftDetailScreen> {
     // it must not share the reassuring tint of a profitable one.
     final isLoss = _shift.netProfit < 0;
     return SoftScaffold(
-      title: 'Shift details',
+      title: 'Session details',
       body: PageFrame(
         maxWidth: 680,
         child: ListView(
@@ -145,14 +145,14 @@ class _ShiftDetailScreenState extends State<ShiftDetailScreen> {
               ),
             ),
             const SizedBox(height: 24),
-            FilledButton(onPressed: _edit, child: const Text('Edit shift')),
+            FilledButton(onPressed: _edit, child: const Text('Edit session')),
             const SizedBox(height: 10),
             OutlinedButton(
               onPressed: _delete,
               style: OutlinedButton.styleFrom(
                 foregroundColor: Theme.of(context).colorScheme.error,
               ),
-              child: const Text('Delete shift'),
+              child: const Text('Delete session'),
             ),
             const SizedBox(height: 32),
           ],
@@ -179,9 +179,9 @@ class _ShiftDetailScreenState extends State<ShiftDetailScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Delete this shift?'),
+        title: const Text('Delete this session?'),
         content: const Text(
-          'This removes the shift from your history and recalculates your totals.',
+          'This removes the session from your history and recalculates your totals.',
         ),
         actions: [
           TextButton(

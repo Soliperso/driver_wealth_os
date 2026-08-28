@@ -95,7 +95,7 @@ class _SignInScreenState extends State<SignInScreen> {
                           Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 22),
                             child: Text(
-                              'Your shifts, goals and expenses stay with your '
+                              'Your sessions, goals and expenses stay with your '
                               'account — so a new phone or a reinstall does not '
                               'cost you your records.',
                               style: Theme.of(context).textTheme.bodyLarge

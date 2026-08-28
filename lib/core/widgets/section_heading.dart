@@ -10,7 +10,7 @@ import '../theme/app_spacing.dart';
 /// [ColorScheme.onSurfaceVariant] and earns its separation from letterSpacing
 /// instead of weight.
 ///
-/// Callers pass the title already uppercased, e.g. `'RECENT SHIFTS'`.
+/// Callers pass the title already uppercased, e.g. `'RECENT SESSIONS'`.
 ///
 /// Lives here rather than on Today because History needs the same idiom; it
 /// previously had a third heading style of its own, which is what made the two

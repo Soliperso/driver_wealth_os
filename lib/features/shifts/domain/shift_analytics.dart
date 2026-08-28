@@ -130,7 +130,7 @@ class ShiftAnalytics {
           MoneyLeak(
             shiftId: shift.id,
             type: MoneyLeakType.negativeProfit,
-            title: 'Unprofitable shift',
+            title: 'Unprofitable session',
             detail:
                 '${shift.platform.displayName} lost ${units.cents(shift.netProfit.abs())} after costs.',
             potentialRecovery: shift.netProfit.abs(),

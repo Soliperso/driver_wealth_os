@@ -33,11 +33,12 @@ void main() {
       find.byKey(const ValueKey('platform-comparison-learning')),
       findsOneWidget,
     );
-    await tester.scrollUntilVisible(find.text('Earnings DNA'), 200);
-    expect(find.text('Earnings DNA'), findsOneWidget);
-    expect(find.text('1 of 4 patterns tracked'), findsOneWidget);
-    await tester.scrollUntilVisible(find.text('Shifts this week'), 200);
-    expect(find.text('Shifts this week'), findsOneWidget);
+    // Earnings DNA is not on History. It is one reading of one data set, and
+    // it lives on Coach's Best times screen — History used to print a second
+    // copy of the same grid and the same progress line.
+    expect(find.text('Earnings DNA'), findsNothing);
+    await tester.scrollUntilVisible(find.text('Sessions this week'), 200);
+    expect(find.text('Sessions this week'), findsOneWidget);
     expect(find.textContaining('All time'), findsNothing);
   });
 
@@ -68,12 +69,86 @@ void main() {
     );
     expect(find.byKey(const ValueKey('history-shift-current')), findsOneWidget);
     expect(find.byKey(const ValueKey('history-shift-older')), findsNothing);
-    await tester.scrollUntilVisible(find.text('View all shifts'), 200);
-    await tester.tap(find.text('View all shifts'));
+    await tester.scrollUntilVisible(find.text('View all sessions'), 200);
+    // scrollUntilVisible stops as soon as the finder matches, which can leave
+    // the link under the floating bottom bar with the tap missing it.
+    await tester.ensureVisible(find.text('View all sessions'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('View all sessions'));
     await tester.pumpAndSettle();
 
-    expect(find.text('All shifts'), findsOneWidget);
+    expect(find.text('All sessions'), findsOneWidget);
     expect(find.byKey(const ValueKey('history-shift-older')), findsOneWidget);
+  });
+
+  testWidgets('an empty period offers the nearest session instead of cards', (
+    tester,
+  ) async {
+    // Far enough back that neither this week nor last week contains it.
+    final past = DateTime.now().subtract(const Duration(days: 21));
+    final store = MemoryAppStore(
+      AppSnapshot(
+        driverName: 'Ahmed',
+        shifts: [_shift(id: 'past', completedAt: past)],
+      ),
+    );
+
+    await tester.pumpWidget(DriverWealthApp(store: store));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('History'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('nearest-session-card')), findsOneWidget);
+    expect(find.textContaining('Your most recent session was'), findsOneWidget);
+    // The analytics stack has nothing to read, so it is not drawn at all.
+    expect(find.text('Profit by day'), findsNothing);
+    expect(find.text('Platform comparison'), findsNothing);
+    expect(find.text('View all sessions'), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('go-to-nearest-session')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('nearest-session-card')), findsNothing);
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('history-shift-past')),
+      200,
+    );
+    expect(find.byKey(const ValueKey('history-shift-past')), findsOneWidget);
+  });
+
+  testWidgets('a gap between sessions points at the one before it', (
+    tester,
+  ) async {
+    // A week with sessions on both sides of it: "most recent" would be wrong
+    // there, and the longest wording is also the one most likely to overflow.
+    final store = MemoryAppStore(
+      AppSnapshot(
+        driverName: 'Ahmed',
+        shifts: [
+          _shift(id: 'recent'),
+          _shift(
+            id: 'older',
+            completedAt: DateTime.now().subtract(const Duration(days: 21)),
+          ),
+        ],
+      ),
+    );
+
+    await tester.pumpWidget(DriverWealthApp(store: store));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('History'));
+    await tester.pumpAndSettle();
+    // Back two weeks, into the gap between the two sessions.
+    await tester.tap(find.byKey(const ValueKey('period-previous')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('period-previous')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.textContaining('The nearest session before this was'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Your most recent session'), findsNothing);
   });
 
   testWidgets('an unreviewed import gets one compact cost warning', (
@@ -98,10 +173,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const ValueKey('cost-review-notice')), findsOneWidget);
-    expect(find.text('Review costs for 1 imported shift'), findsOneWidget);
+    expect(find.text('Review costs for 1 imported session'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('review-imported-costs')));
     await tester.pumpAndSettle();
-    expect(find.text('Shift details'), findsOneWidget);
+    expect(find.text('Session details'), findsOneWidget);
   });
 
   testWidgets('platform comparison waits for two reviewed shifts each', (
@@ -127,14 +202,11 @@ void main() {
     await tester.scrollUntilVisible(find.text('Platform comparison'), 200);
     expect(find.text('Platform comparison'), findsOneWidget);
     expect(
-      find.text('Based on reviewed costs and at least 2 shifts each.'),
+      find.text('Based on reviewed costs and at least 2 sessions each.'),
       findsOneWidget,
     );
-    // Four shifts at one day/time are still one distinct earning pattern, so
-    // the section stays visible and accurately shows that it is learning.
-    await tester.scrollUntilVisible(find.text('Earnings DNA'), 200);
-    expect(find.text('Earnings DNA'), findsOneWidget);
-    expect(find.text('1 of 4 patterns tracked'), findsOneWidget);
+    // The pattern reading itself is Coach's, and is covered there.
+    expect(find.text('Earnings DNA'), findsNothing);
   });
 
   test('old imported records migrate into cost review safely', () {

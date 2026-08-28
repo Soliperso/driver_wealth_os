@@ -79,7 +79,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                           Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 22),
                             child: Text(
-                              'Turn each completed shift into a clear view of what you earned, what it cost, and what you actually kept.',
+                              'Turn each completed session into a clear view of what you earned, what it cost, and what you actually kept.',
                               style: Theme.of(context).textTheme.bodyLarge
                                   ?.copyWith(
                                     color: colors.onSurfaceVariant,

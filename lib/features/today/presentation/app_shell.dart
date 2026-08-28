@@ -219,7 +219,7 @@ class _PlatformPickerSheetState extends State<_PlatformPickerSheet> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Both apps share one shift — your hours and miles are only '
+                  'Both apps share one session — your hours and miles are only '
                   'counted once.',
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -506,7 +506,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                         labelType: NavigationRailLabelType.all,
                         leading: const Padding(
                           padding: EdgeInsets.symmetric(vertical: 20),
-                          child: BrandMark(size: 42, showShadow: false),
+                          child: BrandMark(size: 42),
                         ),
                         destinations: _destinations
                             .map(
@@ -592,7 +592,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         title: 'Which apps are you running?',
         subtitle:
             'Pick one, or add more if you are running several at once. You '
-            'can change this any time during the shift.',
+            'can change this any time during the session.',
       ),
     );
     if (platforms == null || platforms.isEmpty || !mounted) return;
@@ -630,7 +630,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
             'Location services are off. Turn them on to track miles.',
           StartFailure.permissionDenied =>
             'Driver Wealth needs location access to track your miles. You can '
-                'still enter a shift by hand.',
+                'still enter a session by hand.',
           StartFailure.permissionDeniedForever =>
             'Location is blocked for Driver Wealth. Only Settings can undo it.',
         }),
@@ -652,7 +652,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     if (!mounted) return;
     if (granted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Tracking the full shift now.')),
+        const SnackBar(content: Text('Tracking the full session now.')),
       );
       return;
     }
@@ -696,7 +696,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Shift ended automatically after '
+              'Session ended automatically after '
               '${pauseAutoEndAfter.inHours} hours paused. Add your earnings '
               'when you are ready.',
             ),
@@ -783,7 +783,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       builder: (dialogContext) => AlertDialog(
         title: const Text('Sign out?'),
         content: const Text(
-          'Your shifts and goals stay on your account and come back when you '
+          'Your sessions and goals stay on your account and come back when you '
           'sign in again. They will be removed from this device.',
         ),
         actions: [
@@ -877,7 +877,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   Future<void> _exportData() async {
     if (widget.shifts.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Add a shift before exporting data.')),
+        const SnackBar(content: Text('Add a session before exporting data.')),
       );
       return;
     }
@@ -891,7 +891,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     await SharePlus.instance.share(
       ShareParams(
         subject: 'Driver Wealth driving data',
-        text: 'Your Driver Wealth shift export.',
+        text: 'Your Driver Wealth session export.',
         files: [
           XFile.fromData(
             utf8.encode(ShiftExport.csv(widget.shifts)),

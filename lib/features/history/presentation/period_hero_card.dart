@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import '../../../core/format/money.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/animated_money.dart';
+import '../../../core/widgets/metric_panel.dart';
 import '../../../core/widgets/soft_surfaces.dart';
-import '../../../core/widgets/stat_tile.dart';
 import '../../shifts/domain/period_analytics.dart';
 import '../../shifts/domain/shift_summary.dart';
 
@@ -44,9 +44,11 @@ class PeriodHeroCard extends StatelessWidget {
     final lost = summary.netProfit < 0;
 
     return GlassSurface(
-      elevation: Elevation.flat,
-      radius: Radii.lg,
-      padding: const EdgeInsets.all(Space.lg),
+      // The hero rank, like Coach's and Today's. This card is the one thing
+      // History is about, and it was sitting on the rank reserved for rows and
+      // chips — a tier below the analytics cards underneath it.
+      elevation: Elevation.hero,
+      padding: const EdgeInsets.all(Space.xl),
       // Lightened along with the added figures: the same saturation behind
       // twice the content made the card shout.
       tint: colors.primaryContainer.withValues(alpha: .55),
@@ -103,7 +105,7 @@ class PeriodHeroCard extends StatelessWidget {
                     // foot of the card. It is a caption, not a metric, so it
                     // rides with the label instead.
                     'TRUE PROFIT · ${summary.shiftCount} '
-                    '${summary.shiftCount == 1 ? 'SHIFT' : 'SHIFTS'}',
+                    '${summary.shiftCount == 1 ? 'SESSION' : 'SESSIONS'}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: textTheme.labelSmall?.copyWith(
@@ -147,7 +149,7 @@ class PeriodHeroCard extends StatelessWidget {
             // Six vertical rules and six heavy numbers made the card read as a
             // table competing with its own headline; one quiet block reads as
             // reference material underneath it.
-            _MetricPanel(
+            MetricPanel(
               rows: [
                 [
                   (
@@ -378,53 +380,6 @@ class _KeepRatePill extends StatelessWidget {
   }
 }
 
-/// The card's supporting figures, grouped on one recessed surface.
-///
-/// A shared ground is what makes them read as a set the eye can skip over on
-/// the way to the headline. Ruling them apart individually did the opposite:
-/// every cell asked to be read.
-class _MetricPanel extends StatelessWidget {
-  const _MetricPanel({required this.rows});
-
-  final List<List<({String label, String value, bool loss})>> rows;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: Space.md,
-        vertical: Space.md + 2,
-      ),
-      decoration: BoxDecoration(
-        color: colors.surface.withValues(alpha: .55),
-        borderRadius: BorderRadius.circular(Radii.sm),
-      ),
-      child: Column(
-        children: [
-          for (var index = 0; index < rows.length; index++) ...[
-            if (index > 0) const SizedBox(height: Space.lg),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                for (final metric in rows[index])
-                  Expanded(
-                    child: StatTile(
-                      label: metric.label,
-                      value: metric.value,
-                      emphasis: StatEmphasis.compact,
-                      valueColor: metric.loss ? colors.error : null,
-                    ),
-                  ),
-              ],
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
 class _EmptyPeriod extends StatelessWidget {
   const _EmptyPeriod({required this.range});
 
@@ -437,7 +392,7 @@ class _EmptyPeriod extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         Text(
-          'No shifts',
+          'No sessions',
           textAlign: TextAlign.center,
           style: Theme.of(context).textTheme.titleMedium?.copyWith(
             color: Theme.of(context).colorScheme.onSurfaceVariant,

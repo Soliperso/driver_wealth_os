@@ -236,7 +236,7 @@ abstract final class PeriodAnalytics {
       ..sort((a, b) => b.netPerHour.compareTo(a.netPerHour));
 
     final buckets = _buckets(current, range);
-    // A day's bars are individual shifts, so lining yesterday's third shift up
+    // A day's bars are individual sessions, so lining yesterday's third shift up
     // behind today's third shift compares nothing. No ghost bars there.
     final previousValues = period == ReportPeriod.day || previous.isEmpty
         ? const <double>[]

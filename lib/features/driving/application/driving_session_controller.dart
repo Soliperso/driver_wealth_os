@@ -168,7 +168,7 @@ class DrivingSessionController extends ChangeNotifier {
     required double vehicleCostPerMile,
     DateTime? now,
   }) async {
-    assert(platforms.isNotEmpty, 'A shift must start on at least one app');
+    assert(platforms.isNotEmpty, 'A session must start on at least one app');
     if (isDriving) return const StartResult.started();
 
     final permission = await _tracker.requestPermission();

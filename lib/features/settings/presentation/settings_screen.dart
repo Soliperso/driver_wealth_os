@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/format/money.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/page_frame.dart';
+import '../../../core/widgets/section_heading.dart';
 import '../../../core/widgets/soft_surfaces.dart';
 import '../../tax/domain/expense.dart';
 import '../domain/distance_unit.dart';
@@ -571,16 +572,14 @@ class _SettingsSection extends StatelessWidget {
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
+      // The shared heading rather than a style of its own. Settings had drawn
+      // these at onSurface/w800/12sp — heavier, darker and smaller than the
+      // identical labels on Today, History and Coach — which read as a screen
+      // from a different app. Going through the widget is what stops it
+      // drifting again.
       Padding(
         padding: const EdgeInsets.only(left: Space.xs, bottom: Space.sm),
-        child: Text(
-          title.toUpperCase(),
-          style: Theme.of(context).textTheme.labelMedium?.copyWith(
-            color: Theme.of(context).colorScheme.onSurface,
-            fontWeight: FontWeight.w800,
-            letterSpacing: .8,
-          ),
-        ),
+        child: SectionHeading(title: title.toUpperCase()),
       ),
       GlassSurface(
         padding: EdgeInsets.zero,

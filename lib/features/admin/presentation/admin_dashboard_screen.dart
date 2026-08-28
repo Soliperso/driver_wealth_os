@@ -179,7 +179,7 @@ class _OverviewGrid extends StatelessWidget {
           icon: Icons.people_outline_rounded,
         ),
         (
-          label: 'Completed shifts',
+          label: 'Completed sessions',
           value: '${overview.shifts}',
           detail: 'All time',
           icon: Icons.route_outlined,
@@ -470,7 +470,7 @@ class _AdminUserCard extends StatelessWidget {
               ),
               Expanded(
                 child: _UserMetric(
-                  label: 'Shifts',
+                  label: 'Sessions',
                   value: '${user.shiftCount}',
                 ),
               ),

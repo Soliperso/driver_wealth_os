@@ -26,7 +26,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Best times'), findsOneWidget);
-    expect(find.text('Your recorded patterns'), findsOneWidget);
+    // The pattern grid moved here from History, which used to draw a second
+    // copy of it from the same data.
+    expect(find.text('Earnings DNA'), findsOneWidget);
     expect(find.text('True hourly'), findsWidgets);
   });
 

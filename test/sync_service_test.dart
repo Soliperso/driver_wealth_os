@@ -277,11 +277,11 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(historyRow);
       await tester.pumpAndSettle();
-      expect(find.text('Shift details'), findsOneWidget);
+      expect(find.text('Session details'), findsOneWidget);
 
-      await tester.scrollUntilVisible(find.text('Delete shift'), 200);
+      await tester.scrollUntilVisible(find.text('Delete session'), 200);
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Delete shift'));
+      await tester.tap(find.text('Delete session'));
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
       await tester.pumpAndSettle();

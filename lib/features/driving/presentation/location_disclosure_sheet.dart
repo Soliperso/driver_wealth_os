@@ -67,10 +67,10 @@ class LocationDisclosureSheet extends StatelessWidget {
                     Space.gapXl,
                     const _DisclosurePoint(
                       icon: Icons.play_circle_outline_rounded,
-                      title: 'Only during a shift you started',
+                      title: 'Only during a session you started',
                       detail:
                           'Tracking begins when you tap Start Driving and stops '
-                          'the moment you tap End Shift. Never before, never '
+                          'the moment you tap End Session. Never before, never '
                           'after.',
                     ),
                     const _DisclosurePoint(
@@ -106,7 +106,7 @@ class LocationDisclosureSheet extends StatelessWidget {
             ),
             Space.gapXs,
             Text(
-              'You can still track shifts by entering hours and miles yourself.',
+              'You can still track sessions by entering hours and miles yourself.',
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodySmall,
             ),

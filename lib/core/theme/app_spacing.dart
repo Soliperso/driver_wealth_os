@@ -38,25 +38,29 @@ abstract final class Radii {
 /// Three ranks of surface. Everything used to be one flat glass card at radius
 /// 22, so a hero, a stat panel and a list row all carried the same weight and
 /// nothing guided the eye.
+///
+/// Rank is carried by radius, blur and border alone. There are no cast shadows
+/// anywhere in the app: on the pale glass of the light theme they muddied the
+/// card edges, and on the near-black dark background they read as smudges
+/// between stacked cards rather than as lift. Half the screens had already
+/// opted out of them one call site at a time.
 enum Elevation {
   /// The one thing the screen is about.
-  hero(radius: Radii.xl, blur: 16, borderOpacity: .55, shadowOpacity: .10),
+  hero(radius: Radii.xl, blur: 16, borderOpacity: .55),
 
   /// Supporting panels.
-  raised(radius: Radii.lg, blur: 12, borderOpacity: .45, shadowOpacity: .05),
+  raised(radius: Radii.lg, blur: 12, borderOpacity: .45),
 
   /// Rows and chips that should recede.
-  flat(radius: Radii.md, blur: 8, borderOpacity: .35, shadowOpacity: 0);
+  flat(radius: Radii.md, blur: 8, borderOpacity: .35);
 
   const Elevation({
     required this.radius,
     required this.blur,
     required this.borderOpacity,
-    required this.shadowOpacity,
   });
 
   final double radius;
   final double blur;
   final double borderOpacity;
-  final double shadowOpacity;
 }

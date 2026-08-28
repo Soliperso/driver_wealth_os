@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/charts/earnings_dna_heatmap.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/grade_badge.dart';
 import '../../../core/widgets/page_frame.dart';
+import '../../../core/widgets/section_card_title.dart';
+import '../../../core/widgets/section_heading.dart';
 import '../../../core/widgets/soft_surfaces.dart';
 import '../../../core/widgets/stat_tile.dart';
 import '../../settings/domain/measurement_units.dart';
@@ -32,26 +35,43 @@ class BestTimesScreen extends StatelessWidget {
         maxWidth: 720,
         child: ListView(
           children: [
-            Text(
-              'Your recorded patterns',
-              style: Theme.of(
-                context,
-              ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900),
-            ),
-            const SizedBox(height: Space.sm),
-            Text(
-              'Ranked by True hourly using reviewed sessions only. These are observations from your history, not forecasts.',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-                height: 1.45,
+            // The grid, moved here from History's own Earnings DNA card. The
+            // two were the same reading of the same
+            // `ShiftAnalytics.earningsPatterns` data on two screens — down to
+            // printing the same "N of 4 patterns tracked" sentence — and this
+            // is the screen the app now leads to for it. The heatmap was the
+            // one thing History's copy showed that this one did not.
+            GlassSurface(
+              padding: const EdgeInsets.all(Space.xl),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const SectionCardTitle(
+                    icon: Icons.fingerprint_rounded,
+                    title: 'Earnings DNA',
+                    subtitle:
+                        'Which day and time of the week actually pays, graded '
+                        'against your own reviewed sessions.',
+                  ),
+                  Space.gapLg,
+                  EarningsDnaHeatmap(patterns: patterns),
+                ],
               ),
             ),
-            const SizedBox(height: Space.xl),
+            Space.gapXl,
+            const SectionHeading(title: 'RANKED BY TRUE HOURLY'),
+            Space.gapMd,
+            Text(
+              'Reviewed sessions only. These are observations from your '
+              'history, not forecasts.',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            Space.gapLg,
             for (final (index, pattern) in ranked.indexed) ...[
+              if (index > 0) Space.gapMd,
               _PatternCard(rank: index + 1, pattern: pattern, units: units),
-              const SizedBox(height: Space.md),
             ],
-            const SizedBox(height: Space.xxl),
+            const SizedBox(height: Space.bottomNavClearance),
           ],
         ),
       ),

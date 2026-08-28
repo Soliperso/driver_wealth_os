@@ -29,7 +29,7 @@ class _ShiftResultScreenState extends State<ShiftResultScreen> {
     final shift = widget.shift;
     final colors = Theme.of(context).colorScheme;
     return SoftScaffold(
-      title: 'Shift result',
+      title: 'Session result',
       body: PageFrame(
         maxWidth: 680,
         child: SingleChildScrollView(
@@ -189,12 +189,12 @@ class _ShiftResultScreenState extends State<ShiftResultScreen> {
 
   String _insight(Shift shift) {
     if (shift.keepRate >= .75) {
-      return 'Strong shift. You kept at least 75¢ of every dollar—use this as a benchmark for future shifts.';
+      return 'Strong session. You kept at least 75¢ of every dollar—use this as a benchmark for future sessions.';
     }
     if (shift.netPerHour >= 25) {
       return 'Your hourly profit is healthy. Review vehicle and direct costs to raise your keep rate next time.';
     }
-    return 'This shift earned less than \$25 net per hour. Compare its time and mileage with your next shift before repeating it.';
+    return 'This session earned less than \$25 net per hour. Compare its time and mileage with your next session before repeating it.';
   }
 
   void _save() {

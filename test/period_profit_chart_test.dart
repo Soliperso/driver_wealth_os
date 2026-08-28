@@ -42,12 +42,12 @@ void main() {
     await tapBar(tester, 2, 7);
 
     expect(find.text(idle), findsNothing);
-    expect(find.text('Wednesday, Aug 12 · 1 shift'), findsOneWidget);
+    expect(find.text('Wednesday, Aug 12 · 1 session'), findsOneWidget);
     expect(find.text('\$200.00'), findsOneWidget);
 
     // Dragging across to Friday swaps the panel without clearing it.
     await tapBar(tester, 4, 7);
-    expect(find.text('Friday, Aug 14 · 1 shift'), findsOneWidget);
+    expect(find.text('Friday, Aug 14 · 1 session'), findsOneWidget);
 
     // Tapping the selected bar again clears the selection.
     await tapBar(tester, 4, 7);
@@ -68,7 +68,7 @@ void main() {
     await tapBar(tester, 0, 7);
 
     expect(find.text('Monday, Aug 10'), findsOneWidget);
-    expect(find.text('No shifts'), findsOneWidget);
+    expect(find.text('No sessions'), findsOneWidget);
   });
 
   testWidgets('a selection does not survive a change of period', (
@@ -85,7 +85,7 @@ void main() {
       ),
     );
     await tapBar(tester, 2, 7);
-    expect(find.text('Wednesday, Aug 12 · 1 shift'), findsOneWidget);
+    expect(find.text('Wednesday, Aug 12 · 1 session'), findsOneWidget);
 
     // Swap to a month: index 2 means something entirely different now.
     await tester.pumpWidget(
@@ -97,7 +97,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text(idle), findsOneWidget);
-    expect(find.text('Wednesday, Aug 12 · 1 shift'), findsNothing);
+    expect(find.text('Wednesday, Aug 12 · 1 session'), findsNothing);
   });
 
   testWidgets('a loss bucket is not printed in the profit colour', (
@@ -202,7 +202,7 @@ void main() {
     expect(find.text(lineIdle), findsOneWidget);
 
     await tapBar(tester, 2, 7);
-    expect(find.text('Wednesday, Aug 12 · 1 shift'), findsOneWidget);
+    expect(find.text('Wednesday, Aug 12 · 1 session'), findsOneWidget);
     expect(find.text('\$200.00'), findsOneWidget);
   });
 }

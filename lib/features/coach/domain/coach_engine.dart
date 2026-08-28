@@ -1,3 +1,5 @@
+import '../../../core/format/money.dart';
+import '../../accounts/domain/work_platform.dart';
 import '../../settings/domain/measurement_units.dart';
 import '../../shifts/domain/shift.dart';
 import '../../shifts/domain/shift_analytics.dart';
@@ -197,6 +199,10 @@ class CoachEngine {
       leaks: leaks,
       costShifts: costShifts,
       costInsight: costInsight,
+      reviewed: reviewed,
+      today: today,
+      dailyGoal: dailyGoal,
+      hourlyFloor: hourlyFloor,
       units: units,
     );
 
@@ -509,6 +515,10 @@ class CoachEngine {
     required List<MoneyLeak> leaks,
     required List<Shift> costShifts,
     required CoachInsight costInsight,
+    required List<Shift> reviewed,
+    required ShiftSummary today,
+    required double dailyGoal,
+    required double hourlyFloor,
     required MeasurementUnits units,
   }) {
     final questions = <CoachQuestion>[];
@@ -553,6 +563,87 @@ class CoachEngine {
         ),
       );
     }
+    // Which app actually pays, once its costs are counted. Only offered with
+    // two platforms to compare — with one, the answer is the driver's only
+    // option and tells them nothing they can act on.
+    final byPlatform = <WorkPlatform, List<Shift>>{};
+    for (final shift in reviewed.where((shift) => shift.hours > 0)) {
+      byPlatform.putIfAbsent(shift.platform, () => []).add(shift);
+    }
+    if (byPlatform.length >= 2) {
+      final ranked =
+          [
+            for (final entry in byPlatform.entries)
+              (platform: entry.key, summary: ShiftSummary.from(entry.value)),
+          ]..sort(
+            (a, b) => b.summary.netPerHour.compareTo(a.summary.netPerHour),
+          );
+      final best = ranked.first;
+      final worst = ranked.last;
+      questions.add(
+        CoachQuestion(
+          prompt: 'Which app pays me best?',
+          answer:
+              '${best.platform.displayName} leads at '
+              '${units.cents(best.summary.netPerHour)} True hourly across '
+              '${best.summary.shiftCount} reviewed '
+              '${best.summary.shiftCount == 1 ? 'session' : 'sessions'}, '
+              'against ${units.cents(worst.summary.netPerHour)} on '
+              '${worst.platform.displayName}. Both figures are after driving '
+              'costs.',
+        ),
+      );
+    }
+    // Measured against the driver's own floor from Settings, not a number the
+    // app picked.
+    if (hourlyFloor > 0) {
+      final withHours = reviewed.where((shift) => shift.hours > 0).toList();
+      if (withHours.isNotEmpty) {
+        final summary = ShiftSummary.from(withHours);
+        final below = withHours
+            .where((shift) => shift.netPerHour < hourlyFloor)
+            .length;
+        final clears = summary.netPerHour >= hourlyFloor;
+        questions.add(
+          CoachQuestion(
+            prompt: 'Am I hitting my hourly floor?',
+            answer:
+                'Your reviewed sessions average '
+                '${units.cents(summary.netPerHour)} True hourly against a '
+                '${units.cents(hourlyFloor)} floor, so you are '
+                '${clears ? 'clearing it' : 'under it'}. $below of '
+                '${withHours.length} '
+                '${withHours.length == 1 ? 'session' : 'sessions'} finished '
+                'below the floor.',
+          ),
+        );
+      }
+    }
+    // What is left of today's goal, and what that is in driving hours at the
+    // pace this driver actually records.
+    if (dailyGoal > 0) {
+      final remaining = dailyGoal - today.netProfit;
+      final pace = ShiftSummary.from(
+        reviewed.where((shift) => shift.hours > 0),
+      ).netPerHour;
+      questions.add(
+        CoachQuestion(
+          prompt: 'How far am I from today’s goal?',
+          answer: remaining <= 0
+              ? 'Today is already past your ${units.cents(dailyGoal)} goal by '
+                    '${units.cents(remaining.abs())} True Profit.'
+              : pace > 0
+              ? '${units.cents(remaining)} to go on your '
+                    '${units.cents(dailyGoal)} goal. At your recorded '
+                    '${units.cents(pace)} True hourly that is about '
+                    '${Money.hours(remaining / pace)} of driving.'
+              : '${units.cents(remaining)} to go on your '
+                    '${units.cents(dailyGoal)} goal. Review costs on a '
+                    'session with hours recorded and Coach can estimate the '
+                    'driving time that takes.',
+        ),
+      );
+    }
     if (questions.isEmpty) {
       questions.add(
         const CoachQuestion(
@@ -562,7 +653,10 @@ class CoachEngine {
         ),
       );
     }
-    return questions.take(4).toList();
+    // Raised from four: the chips wrap, and every question here is gated on
+    // the data that answers it, so a driver with real history is the only one
+    // who ever sees the longer list.
+    return questions.take(7).toList();
   }
 }
 

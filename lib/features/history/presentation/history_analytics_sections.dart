@@ -1,16 +1,15 @@
 import 'package:flutter/material.dart';
 
-import '../../../core/charts/chart_palette.dart';
-import '../../../core/charts/earnings_dna_heatmap.dart';
 import '../../../core/charts/period_profit_chart.dart';
 import '../../../core/format/money.dart';
 import '../../../core/theme/app_spacing.dart';
+import '../../../core/widgets/learning_progress.dart';
+import '../../../core/widgets/section_card_title.dart';
 import '../../../core/widgets/soft_surfaces.dart';
 import '../../accounts/domain/work_platform.dart';
 import '../../accounts/presentation/platform_logo.dart';
 import '../../shifts/domain/period_analytics.dart';
 import '../../shifts/domain/shift.dart';
-import '../../shifts/domain/shift_analytics.dart';
 import '../../shifts/domain/shift_summary.dart';
 
 /// The chart card for whichever window the hero card is showing.
@@ -39,47 +38,34 @@ class _PeriodPerformanceSectionState extends State<PeriodPerformanceSection> {
     final period = performance.range.period;
 
     return GlassSurface(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(Space.xl),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      switch (period) {
-                        ReportPeriod.day => 'Profit by shift',
-                        ReportPeriod.week ||
-                        ReportPeriod.month => 'Profit by day',
-                        ReportPeriod.year => 'Profit by month',
-                      },
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      performance.range.plainLabel,
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: Space.md),
-              _ChartStyleToggle(
-                value: _chartStyle,
-                onChanged: (value) => setState(() => _chartStyle = value),
-              ),
-            ],
+          // The shared card heading, whose `trailing` slot exists for exactly
+          // this toggle. It was hand-rolled here with its own gaps and no
+          // icon, so the one card on History that carries a chart was also the
+          // one card that did not look like the others.
+          SectionCardTitle(
+            // Not a bar-chart glyph: the toggle to its right is already drawn
+            // with one, and repeating it in the heading made the leading icon
+            // look like a third state of that control.
+            icon: Icons.query_stats_rounded,
+            title: switch (period) {
+              ReportPeriod.day => 'Profit by session',
+              ReportPeriod.week || ReportPeriod.month => 'Profit by day',
+              ReportPeriod.year => 'Profit by month',
+            },
+            subtitle: performance.range.plainLabel,
+            trailing: _ChartStyleToggle(
+              value: _chartStyle,
+              onChanged: (value) => setState(() => _chartStyle = value),
+            ),
           ),
-          const SizedBox(height: 18),
+          Space.gapLg,
           if (summary.shiftCount == 0)
             Text(
-              'No completed shifts in this period yet.',
+              'No completed sessions in this period yet.',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
@@ -97,14 +83,14 @@ class _PeriodPerformanceSectionState extends State<PeriodPerformanceSection> {
               idleSummary: previous.shiftCount > 0
                   ? '${_comparisonLabel(period)}: ${Money.cents(previous.netProfit)} '
                         'across ${previous.shiftCount} '
-                        '${previous.shiftCount == 1 ? 'shift' : 'shifts'}.\n'
+                        '${previous.shiftCount == 1 ? 'session' : 'sessions'}.\n'
                         '${_interactionHint(_chartStyle)}.'
                   : '${_interactionHint(_chartStyle)}.',
             ),
             if (performance.bestShift != null && summary.shiftCount > 1) ...[
               const Divider(height: 28),
               Text(
-                'Best shift: ${performance.bestShift!.platform.displayName} at '
+                'Best session: ${performance.bestShift!.platform.displayName} at '
                 '${Money.cents(performance.bestShift!.netPerHour)}/hr',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -256,7 +242,7 @@ class PlatformPerformanceSection extends StatelessWidget {
     final ready = comparable.length >= 2;
     // Progress has to be measured against the gate the section actually
     // applies — two platforms with two reviewed shifts *each*. Counting every
-    // platform's shifts filled the bar to "2 of 2 platforms · 4 of 4 shifts"
+    // platform's shifts filled the bar to "2 of 2 platforms · 4 of 4 sessions"
     // while the section still said it was waiting for data.
     final counts = [for (final shifts in grouped.values) shifts.length]
       ..sort((a, b) => b.compareTo(a));
@@ -271,42 +257,31 @@ class PlatformPerformanceSection extends StatelessWidget {
       children: [
         const SizedBox(height: Space.md),
         GlassSurface(
-          elevation: Elevation.flat,
-          padding: const EdgeInsets.all(Space.lg),
+          padding: const EdgeInsets.all(Space.xl),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(
-                'Platform comparison',
-                style: Theme.of(
-                  context,
-                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+              SectionCardTitle(
+                icon: Icons.compare_arrows_rounded,
+                title: 'Platform comparison',
+                subtitle: ready
+                    ? 'Based on reviewed costs and at least 2 sessions each.'
+                    : 'Track 2 reviewed sessions on 2 platforms to compare pay.',
               ),
-              const SizedBox(height: Space.xs),
-              Text(
-                ready
-                    ? 'Based on reviewed costs and at least 2 shifts each.'
-                    : 'Track 2 reviewed shifts on 2 platforms to compare pay.',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-              ),
-              Space.gapMd,
-              if (!ready) ...[
-                LinearProgressIndicator(
-                  key: const ValueKey('platform-comparison-learning'),
-                  value: trackedShifts / 4,
-                  minHeight: 6,
-                  borderRadius: BorderRadius.circular(Radii.pill),
-                ),
-                const SizedBox(height: Space.sm),
-                Text(
-                  '$trackedPlatforms of 2 platforms · $trackedShifts of 4 shifts',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ] else
+              Space.gapLg,
+              if (!ready)
+                // The shared waiting state, as on Coach. This bar was one of
+                // the two hand-rolled copies at differing heights that
+                // [LearningProgress] was extracted to replace.
+                LearningProgress(
+                  barKey: const ValueKey('platform-comparison-learning'),
+                  done: trackedShifts,
+                  needed: 4,
+                  caption:
+                      '$trackedPlatforms of 2 platforms · '
+                      '$trackedShifts of 4 sessions',
+                )
+              else
                 for (
                   var index = 0;
                   index < comparable.take(3).length;
@@ -346,7 +321,7 @@ class _PlatformPerformanceRow extends StatelessWidget {
               ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
             ),
             Text(
-              '${data.shifts.length} shifts',
+              '${data.shifts.length} sessions',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
@@ -365,141 +340,3 @@ class _PlatformPerformanceRow extends StatelessWidget {
   );
 }
 
-class EarningsDnaSection extends StatelessWidget {
-  const EarningsDnaSection({super.key, required this.shifts});
-
-  final List<Shift> shifts;
-
-  @override
-  Widget build(BuildContext context) {
-    final patterns = ShiftAnalytics.earningsPatterns(shifts);
-    final ready = patterns.length >= 4;
-    return GlassSurface(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            'Earnings DNA',
-            style: Theme.of(
-              context,
-            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
-          ),
-          const SizedBox(height: 5),
-          Text(
-            ready
-                ? 'Relative grades compare your own day-and-time patterns.'
-                : 'Track 4 distinct day-and-time patterns to unlock relative grades.',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-              height: 1.4,
-            ),
-          ),
-          const SizedBox(height: 16),
-          if (patterns.isEmpty)
-            const Text('No pattern data yet.')
-          else if (!ready) ...[
-            LinearProgressIndicator(
-              value: (patterns.length / 4).clamp(0.0, 1.0),
-              minHeight: 7,
-              borderRadius: BorderRadius.circular(99),
-            ),
-            const SizedBox(height: 9),
-            Text(
-              '${patterns.length} of 4 patterns tracked',
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-          ] else ...[
-            // The grid is the point: which day and time of week actually pays.
-            EarningsDnaHeatmap(patterns: patterns),
-            const Divider(height: 28),
-            Text(
-              'Strongest patterns',
-              style: Theme.of(
-                context,
-              ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700),
-            ),
-            Space.gapMd,
-            for (final pattern in patterns.take(3)) ...[
-              _PatternRow(pattern: pattern),
-              if (pattern != patterns.take(3).last) const Divider(height: 20),
-            ],
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _PatternRow extends StatelessWidget {
-  const _PatternRow({required this.pattern});
-
-  final EarningsPattern pattern;
-
-  @override
-  Widget build(BuildContext context) => Row(
-    children: [
-      _GradeBadge(grade: pattern.grade),
-      const SizedBox(width: 12),
-      Expanded(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              pattern.label,
-              style: Theme.of(
-                context,
-              ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              '${pattern.timeBlock.range} · ${pattern.shiftCount} ${pattern.shiftCount == 1 ? 'shift' : 'shifts'}',
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-          ],
-        ),
-      ),
-      Text(
-        '${Money.cents(pattern.netPerHour)}/hr',
-        style: Theme.of(context).textTheme.labelLarge?.copyWith(
-          fontWeight: FontWeight.w800,
-          fontFeatures: tabularFigures,
-        ),
-      ),
-    ],
-  );
-}
-
-class _GradeBadge extends StatelessWidget {
-  const _GradeBadge({required this.grade});
-
-  final PatternGrade grade;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = ChartPalette.of(context);
-    // A–D is an ordered scale, so it takes one hue with monotone lightness.
-    // The previous badge used four unrelated hues (teal, blue, brown, red),
-    // which spent the identity channel on something rank already conveys — and
-    // borrowed the error colour, whose reserved meaning here is a loss.
-    final color = grade == PatternGrade.pending
-        ? Theme.of(context).colorScheme.outline
-        : palette.forGradeIndex(grade.index - PatternGrade.a.index, 4);
-    return Container(
-      width: 34,
-      height: 34,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: .16),
-        borderRadius: BorderRadius.circular(Radii.sm - 2),
-      ),
-      child: Text(
-        grade.name.toUpperCase(),
-        style: Theme.of(context).textTheme.labelLarge?.copyWith(
-          color: Theme.of(context).colorScheme.onSurface,
-          fontWeight: FontWeight.w900,
-        ),
-      ),
-    );
-  }
-}

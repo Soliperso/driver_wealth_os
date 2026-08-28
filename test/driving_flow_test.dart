@@ -130,7 +130,7 @@ void main() {
     // Explained before the system dialog, not after.
     expect(find.text('Why Driver Wealth needs your location'), findsOneWidget);
     expect(
-      find.textContaining('Only during a shift you started'),
+      find.textContaining('Only during a session you started'),
       findsOneWidget,
     );
 

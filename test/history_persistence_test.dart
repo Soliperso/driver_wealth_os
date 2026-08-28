@@ -78,17 +78,17 @@ void main() {
     // to the selected period's rows.
     final historyRow = find.byKey(const ValueKey('history-shift-persisted-1'));
     await tester.scrollUntilVisible(historyRow, 200);
-    expect(find.text('Shifts this week'), findsOneWidget);
+    expect(find.text('Sessions this week'), findsOneWidget);
     expect(historyRow, findsOneWidget);
     await Scrollable.ensureVisible(tester.element(historyRow), alignment: .5);
     await tester.pumpAndSettle();
     await tester.tap(historyRow);
     await tester.pumpAndSettle();
-    expect(find.text('Shift details'), findsOneWidget);
+    expect(find.text('Session details'), findsOneWidget);
     expect(find.text(r'$250.00'), findsWidgets);
 
-    await tester.ensureVisible(find.text('Edit shift'));
-    await tester.tap(find.text('Edit shift'));
+    await tester.ensureVisible(find.text('Edit session'));
+    await tester.tap(find.text('Edit session'));
     await tester.pumpAndSettle();
     final fields = find.byType(TextFormField);
     await tester.enterText(fields.at(0), '350');
@@ -100,18 +100,18 @@ void main() {
     await tester.tap(find.text('Save changes'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Shift details'), findsOneWidget);
+    expect(find.text('Session details'), findsOneWidget);
     expect(find.text(r'$300.00'), findsWidgets);
     expect(store.snapshot.shifts.single.gross, 350);
 
-    await tester.ensureVisible(find.text('Delete shift'));
-    await tester.tap(find.text('Delete shift'));
+    await tester.ensureVisible(find.text('Delete session'));
+    await tester.tap(find.text('Delete session'));
     await tester.pumpAndSettle();
-    expect(find.text('Delete this shift?'), findsOneWidget);
+    expect(find.text('Delete this session?'), findsOneWidget);
     await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
     await tester.pumpAndSettle();
 
-    expect(find.text('No shifts yet'), findsOneWidget);
+    expect(find.text('No sessions yet'), findsOneWidget);
     expect(store.snapshot.shifts, isEmpty);
   });
 }

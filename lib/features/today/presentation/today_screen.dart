@@ -3,7 +3,10 @@ import 'package:flutter/material.dart';
 import '../../../core/format/money.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/animated_money.dart';
+import '../../../core/widgets/metric_panel.dart';
 import '../../../core/widgets/page_frame.dart';
+import '../../../core/widgets/section_card_title.dart';
+import '../../../core/widgets/section_heading.dart';
 import '../../../core/widgets/soft_surfaces.dart';
 import '../../accounts/domain/work_platform.dart';
 import '../../accounts/presentation/platform_logo.dart';
@@ -162,7 +165,7 @@ class TodayScreen extends StatelessWidget {
             children: [
               if (storageError != null) ...[
                 _StorageErrorBanner(message: storageError!),
-                const SizedBox(height: 16),
+                Space.gapLg,
               ],
               // Unfinished tracked driving outranks everything else on the
               // screen: it is the only thing here that can still be lost.
@@ -173,7 +176,7 @@ class TodayScreen extends StatelessWidget {
                   onResume: onResumeDraft,
                   onDiscard: onDiscardDraft,
                 ),
-                const SizedBox(height: 16),
+                Space.gapLg,
               ],
               // Mid-shift the live session is what the driver opened the app
               // to see, so it takes the hero slot until the shift ends.
@@ -203,7 +206,7 @@ class TodayScreen extends StatelessWidget {
                   units: units,
                   onEditGoal: () => _editDailyGoal(context),
                 ),
-                const SizedBox(height: 16),
+                Space.gapLg,
                 if (onStartDriving != null)
                   _StartDrivingCard(
                     onStart: onStartDriving!,
@@ -219,7 +222,7 @@ class TodayScreen extends StatelessWidget {
                   ),
               ],
               if (summary.shiftCount > 0) ...[
-                const SizedBox(height: 16),
+                Space.gapLg,
                 _PerformancePanel(
                   netPerHour: summary.hours == 0 ? null : summary.netPerHour,
                   netPerMile: summary.miles == 0 ? null : summary.netPerMile,
@@ -227,7 +230,7 @@ class TodayScreen extends StatelessWidget {
                   shiftCount: summary.shiftCount,
                   units: units,
                 ),
-                const SizedBox(height: 16),
+                Space.gapLg,
                 _NextMove(
                   message: _nextMove(
                     hasShifts: true,
@@ -243,9 +246,18 @@ class TodayScreen extends StatelessWidget {
               // "Recent" means the latest shifts overall, so this is gated on
               // having any history at all rather than on having driven today.
               if (recentShifts.isNotEmpty) ...[
-                const SizedBox(height: 28),
-                _SectionHeader(onViewHistory: onOpenHistory),
-                const SizedBox(height: 12),
+                Space.gapXl,
+                SectionHeading(
+                  title: 'RECENT SESSIONS',
+                  // A link out, not a second way in: this list is the last five
+                  // sessions, and the question it raises is "where are the
+                  // rest?". Adding one by hand already has its own control up
+                  // the screen.
+                  actionLabel: onOpenHistory == null ? null : 'View history',
+                  onAction: onOpenHistory,
+                  actionKey: const ValueKey('view-history-link'),
+                ),
+                Space.gapMd,
                 ...recentShifts.map(
                   (shift) => _ShiftRow(
                     shift: shift,
@@ -256,7 +268,7 @@ class TodayScreen extends StatelessWidget {
                   ),
                 ),
               ],
-              const SizedBox(height: 92),
+              const SizedBox(height: Space.bottomNavClearance),
             ],
           ),
         ),
@@ -456,7 +468,6 @@ class _StartDrivingCard extends StatelessWidget {
     return GlassSurface(
       key: const ValueKey('start-driving-card'),
       padding: const EdgeInsets.all(Space.xl),
-      shadow: false,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -471,10 +482,13 @@ class _StartDrivingCard extends StatelessWidget {
           Text(
             'NOT DRIVING',
             textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+            // The card-eyebrow rank, not a title: it was set two sizes above
+            // every other eyebrow in the app, so an idle screen shouted its
+            // least useful line the loudest.
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
               color: colors.onSurfaceVariant,
+              letterSpacing: .6,
               fontWeight: FontWeight.w700,
-              letterSpacing: 1.2,
             ),
           ),
           Space.gapXl,
@@ -520,7 +534,6 @@ class _TrackedDraftCard extends StatelessWidget {
       key: const ValueKey('pending-draft-card'),
       padding: const EdgeInsets.all(Space.xl),
       tint: colors.tertiaryContainer.withValues(alpha: .82),
-      shadow: false,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -588,7 +601,6 @@ class _StorageErrorBanner extends StatelessWidget {
       key: const ValueKey('storage-error-banner'),
       padding: const EdgeInsets.all(Space.lg),
       tint: colors.errorContainer.withValues(alpha: .82),
-      shadow: false,
       child: Row(
         children: [
           Icon(Icons.warning_amber_rounded, color: colors.error),
@@ -652,7 +664,6 @@ class _ProfitHero extends StatelessWidget {
       elevation: Elevation.hero,
       padding: const EdgeInsets.all(Space.xl),
       tint: tint,
-      shadow: false,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -667,10 +678,13 @@ class _ProfitHero extends StatelessWidget {
                   children: [
                     Text(
                       'TRUE PROFIT',
-                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      // The hero-eyebrow rank shared with Coach and History.
+                      // The accent colour stays: here it is carrying the goal
+                      // state, which is information rather than decoration.
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
                         color: accent,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 1,
+                        letterSpacing: .6,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
                     Text(
@@ -682,12 +696,12 @@ class _ProfitHero extends StatelessWidget {
               ),
               Container(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 6,
+                  horizontal: Space.md,
+                  vertical: Space.sm,
                 ),
                 decoration: BoxDecoration(
                   color: colors.surface.withValues(alpha: .55),
-                  borderRadius: BorderRadius.circular(99),
+                  borderRadius: BorderRadius.circular(Radii.pill),
                 ),
                 child: Text(
                   // Without shifts there is no keep rate; "0% kept" would read
@@ -711,9 +725,12 @@ class _ProfitHero extends StatelessWidget {
               child: AnimatedMoney(
                 value: net,
                 units: units,
+                // One token for a hero figure across the app. `displaySmall`
+                // renders at the same 40pt, but naming it differently here was
+                // how the three heroes drifted apart in the first place.
                 style: Theme.of(
                   context,
-                ).textTheme.displaySmall?.copyWith(color: colors.onSurface),
+                ).textTheme.headlineLarge?.copyWith(color: colors.onSurface),
               ),
             ),
           ),
@@ -736,7 +753,7 @@ class _ProfitHero extends StatelessWidget {
           ),
           // Below the bar, not above it: the bar is the picture of where the
           // day stands and this line is its caption.
-          const SizedBox(height: 5),
+          Space.gapXs,
           _GoalLine(
             goalState: goalState,
             net: net,
@@ -886,143 +903,50 @@ class _PerformancePanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => GlassSurface(
-    padding: const EdgeInsets.all(20),
-    shadow: false,
+    padding: const EdgeInsets.all(Space.xl),
     child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(
-          'PERFORMANCE',
-          style: Theme.of(context).textTheme.labelMedium?.copyWith(
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 1.1,
-          ),
+        const SectionCardTitle(
+          icon: Icons.speed_rounded,
+          title: 'Performance',
         ),
-        const SizedBox(height: 18),
-        LayoutBuilder(
-          builder: (context, constraints) {
-            final stats = [
-              _Stat(
+        Space.gapLg,
+        // The shared panel, as on Coach and History. This grid used to fence
+        // each figure off from its neighbours with hairline rules and a
+        // divider, which is the exact treatment [MetricPanel] exists to
+        // replace: six ruled cells read as a table competing with the hero
+        // above them.
+        MetricPanel(
+          rows: [
+            [
+              (
                 label: 'Net / hour',
                 value: netPerHour == null ? '—' : units.cents(netPerHour!),
-                icon: Icons.schedule_rounded,
+                loss: false,
               ),
-              _Stat(
+              (
                 // Named and converted per the driver's unit: a per-mile figure
                 // shown to a metric driver is wrong by 60%.
                 label: 'Net / ${units.distance.singular}',
                 value: netPerMile == null
                     ? '—'
                     : units.cents(units.rateFromPerMile(netPerMile!)),
-                icon: Icons.route_rounded,
+                loss: false,
               ),
-              _Stat(
+            ],
+            [
+              (
                 label: units.distance.label,
-                value: units
-                    .distanceValue(miles)
-                    .toStringAsFixed(1),
-                icon: Icons.directions_car_outlined,
+                value: units.distanceValue(miles).toStringAsFixed(1),
+                loss: false,
               ),
-              _Stat(
-                label: 'Sessions',
-                value: '$shiftCount',
-                icon: Icons.work_outline_rounded,
-              ),
-            ];
-            if (constraints.maxWidth < 560) {
-              return Column(
-                children: [
-                  Row(
-                    children: [
-                      Expanded(child: stats[0]),
-                      const _VerticalRule(),
-                      Expanded(child: stats[1]),
-                    ],
-                  ),
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 16),
-                    child: Divider(),
-                  ),
-                  Row(
-                    children: [
-                      Expanded(child: stats[2]),
-                      const _VerticalRule(),
-                      Expanded(child: stats[3]),
-                    ],
-                  ),
-                ],
-              );
-            }
-            return Row(
-              children: [
-                Expanded(child: stats[0]),
-                const _VerticalRule(),
-                Expanded(child: stats[1]),
-                const _VerticalRule(),
-                Expanded(child: stats[2]),
-                const _VerticalRule(),
-                Expanded(child: stats[3]),
-              ],
-            );
-          },
+              (label: 'Sessions', value: '$shiftCount', loss: false),
+            ],
+          ],
         ),
       ],
     ),
-  );
-}
-
-class _Stat extends StatelessWidget {
-  const _Stat({required this.label, required this.value, required this.icon});
-
-  final String label;
-  final String value;
-  final IconData icon;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(icon, size: 16, color: colors.onSurfaceVariant),
-              const SizedBox(width: 6),
-              Flexible(
-                child: Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 5),
-          Text(
-            value,
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-              fontSize: 20,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _VerticalRule extends StatelessWidget {
-  const _VerticalRule();
-
-  @override
-  Widget build(BuildContext context) => Container(
-    width: 1,
-    height: 48,
-    color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: .5),
   );
 }
 
@@ -1032,92 +956,19 @@ class _NextMove extends StatelessWidget {
   final String message;
 
   @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    return GlassSurface(
-      padding: const EdgeInsets.all(18),
-      shadow: false,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const SoftIcon(Icons.auto_awesome_rounded, size: 18),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // The same eyebrow as every other section on this screen, so
-                // the card titles read as one system rather than three.
-                Text(
-                  'YOUR NEXT MOVE',
-                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                    color: colors.onSurfaceVariant,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 1.1,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                // The message carries the weight, not the label above it: this
-                // card exists for the sentence, and a muted paragraph under a
-                // muted heading gave the reader nothing to land on.
-                Text(
-                  message,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: colors.onSurface,
-                    height: 1.45,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SectionHeader extends StatelessWidget {
-  const _SectionHeader({this.onViewHistory});
-
-  /// Opens the full history. Absent leaves the header a plain label rather than
-  /// a link that goes nowhere.
-  final VoidCallback? onViewHistory;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    return Row(
-      children: [
-        Expanded(
-          // Set as an eyebrow like the other section labels on this screen: it
-          // names a list that speaks for itself and should not compete with the
-          // figures inside it.
-          child: Text(
-            'RECENT SESSIONS',
-            style: Theme.of(context).textTheme.labelMedium?.copyWith(
-              color: colors.onSurfaceVariant,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 1.1,
-            ),
-          ),
-        ),
-        if (onViewHistory != null)
-          // A link out, not a second way in: this list is the last five
-          // sessions, and the question it raises is "where are the rest?".
-          // Adding one by hand already has its own control up the screen.
-          TextButton(
-            key: const ValueKey('view-history-link'),
-            onPressed: onViewHistory,
-            style: TextButton.styleFrom(
-              visualDensity: VisualDensity.compact,
-              padding: const EdgeInsets.symmetric(horizontal: Space.sm),
-              minimumSize: const Size(0, 40),
-            ),
-            child: const Text('View history'),
-          ),
-      ],
-    );
-  }
+  Widget build(BuildContext context) => GlassSurface(
+    padding: const EdgeInsets.all(Space.xl),
+    // Coach's insight card, which is what this has always been: an icon, the
+    // heading it belongs to, and the sentence underneath. It was hand-rolled
+    // with its own eyebrow, its own gaps and its own line height, so the same
+    // reading looked like a different component depending on which of the two
+    // screens the driver was standing on.
+    child: SectionCardTitle(
+      icon: Icons.auto_awesome_rounded,
+      title: 'Your next move',
+      subtitle: message,
+    ),
+  );
 }
 
 class _ShiftRow extends StatelessWidget {

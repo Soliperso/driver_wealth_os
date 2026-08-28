@@ -40,18 +40,32 @@ void main() {
     await tester.tap(find.text('History'));
     await tester.pumpAndSettle();
     expect(find.text('This week'), findsOneWidget);
-
-    // The weekly chart sits between the summary and the DNA card, so the grid
-    // is below the fold until scrolled into view.
-    await tester.scrollUntilVisible(find.text('Earnings DNA'), 200);
-    expect(find.text('Earnings DNA'), findsOneWidget);
-    // Grades now appear both in the heatmap cells and in the ranked list.
-    expect(find.text('A'), findsWidgets);
-    expect(find.text('D'), findsWidgets);
+    // History does not carry a second copy of the pattern grid.
+    expect(find.text('Earnings DNA'), findsNothing);
 
     await tester.tap(find.text('Coach'));
     await tester.pumpAndSettle();
     expect(find.text('Profit coach'), findsOneWidget);
+
+    // Earnings DNA is reached through Coach's ranked-patterns card, which is
+    // the app's one route to this reading.
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('coach-best-times')),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    // scrollUntilVisible stops as soon as the finder matches, which can leave
+    // the card still under the floating bottom bar and the tap missing it.
+    await tester.ensureVisible(find.byKey(const ValueKey('coach-best-times')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('coach-best-times')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Best times'), findsOneWidget);
+    expect(find.text('Earnings DNA'), findsOneWidget);
+    // Grades appear both in the heatmap cells and in the ranked list.
+    expect(find.text('A'), findsWidgets);
+    expect(find.text('D'), findsWidgets);
   });
 }
 

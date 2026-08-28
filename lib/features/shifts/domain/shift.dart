@@ -128,7 +128,7 @@ class Shift {
 
   double earnedOn(WorkPlatform platform) => earnings[platform] ?? 0;
 
-  /// This platform's share of the shift's gross, 0..1. The only per-platform
+  /// This platform's share of the session's gross, 0..1. The only per-platform
   /// figure a multi-app shift can support.
   double shareOf(WorkPlatform platform) =>
       gross == 0 ? 0 : earnedOn(platform) / gross;
@@ -193,7 +193,7 @@ class Shift {
     final id = json['id'];
     final completedAt = DateTime.tryParse(json['completedAt'] as String? ?? '');
     if (id is! String || id.isEmpty || completedAt == null) {
-      throw const FormatException('Invalid shift identity');
+      throw const FormatException('Invalid session identity');
     }
     final source = ShiftSource.fromId(json['source']);
     return Shift(
@@ -282,6 +282,6 @@ class Shift {
     if (value is num && value.isFinite && value >= 0) {
       return value.toDouble();
     }
-    throw const FormatException('Invalid shift amount');
+    throw const FormatException('Invalid session amount');
   }
 }

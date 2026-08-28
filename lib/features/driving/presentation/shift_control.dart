@@ -76,7 +76,7 @@ class ShiftControl extends StatelessWidget {
         colors.onPrimary,
         Icons.pause_rounded,
         'Pause',
-        'Pause shift',
+        'Pause session',
       ),
       // A break has to be unmistakable against idle, because the two offer the
       // same icon and mistaking one for the other means a driver walks away
@@ -86,7 +86,7 @@ class ShiftControl extends StatelessWidget {
         colors.onTertiaryContainer,
         Icons.play_arrow_rounded,
         'Resume',
-        'Resume shift',
+        'Resume session',
       ),
     };
 

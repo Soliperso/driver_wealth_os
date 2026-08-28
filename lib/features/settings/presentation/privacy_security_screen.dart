@@ -21,7 +21,7 @@ class PrivacySecurityScreen extends StatelessWidget {
             icon: Icons.shield_outlined,
             title: 'Your data stays yours',
             body:
-                'Driver Wealth stores a working copy on this device so shift tracking and edits keep working offline.',
+                'Driver Wealth stores a working copy on this device so session tracking and edits keep working offline.',
           ),
           const SizedBox(height: Space.md),
           if (accountEmail != null) ...[
@@ -29,7 +29,7 @@ class PrivacySecurityScreen extends StatelessWidget {
               icon: Icons.cloud_done_outlined,
             title: 'Account sync',
               body:
-                  'Your shifts, goals and preferences sync to the account signed in as $accountEmail.',
+                  'Your sessions, goals and preferences sync to the account signed in as $accountEmail.',
             ),
             const SizedBox(height: Space.md),
           ],
@@ -37,7 +37,7 @@ class PrivacySecurityScreen extends StatelessWidget {
             icon: Icons.location_on_outlined,
             title: 'Location access',
             body:
-                'Location is used to add up distance while a driving shift is active. Manage the permission in your device settings.',
+                'Location is used to add up distance while a driving session is active. Manage the permission in your device settings.',
             action: OutlinedButton.icon(
               key: const ValueKey('privacy-open-device-settings'),
               onPressed: openAppSettings,

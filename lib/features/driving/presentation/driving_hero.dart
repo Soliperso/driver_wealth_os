@@ -653,7 +653,7 @@ class _PausedNotice extends StatelessWidget {
           Expanded(
             child: Text(
               'Paused for $spent. Neither your time nor your miles are '
-              'counting. If you are driving, resume now — this shift ends '
+              'counting. If you are driving, resume now — this session ends '
               'itself after ${pauseAutoEndAfter.inHours} hours paused.',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: colors.onTertiaryContainer,

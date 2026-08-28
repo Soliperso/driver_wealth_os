@@ -40,6 +40,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
   late List<Shift> _ordered;
   late List<Shift> _periodShifts;
   late PeriodPerformance _performance;
+
+  /// Set only when the selected window is empty: the session nearest to it.
+  _NearestSession? _nearest;
   var _showAllShifts = false;
 
   @override
@@ -71,12 +74,45 @@ class _HistoryScreenState extends State<HistoryScreen> {
     _periodShifts = _ordered
         .where((shift) => _performance.range.contains(shift.completedAt))
         .toList();
+    _nearest = _periodShifts.isEmpty ? _nearestTo(_performance.range) : null;
+  }
+
+  /// The session closest to an empty window: the last one before it, or — when
+  /// the window sits earlier than everything recorded — the first one after.
+  ///
+  /// `_ordered` runs newest first, so the first match walking forward is the
+  /// latest session before the window, and the tail is the earliest overall.
+  _NearestSession? _nearestTo(PeriodRange range) {
+    if (_ordered.isEmpty) return null;
+    for (final shift in _ordered) {
+      if (shift.completedAt.isBefore(range.start)) {
+        return (
+          shift: shift,
+          // Only the newest session of all can be called "most recent"; from a
+          // window in the middle of the history it would simply be wrong.
+          kind: identical(shift, _ordered.first)
+              ? _NearestKind.latest
+              : _NearestKind.earlier,
+        );
+      }
+    }
+    return (shift: _ordered.last, kind: _NearestKind.earliest);
   }
 
   void _changePeriod(ReportPeriod period) {
     if (period == _period) return;
     setState(() {
       _period = period;
+      _showAllShifts = false;
+      _recompute();
+    });
+  }
+
+  /// Moves the window to whichever one contains [moment], keeping the period
+  /// granularity the driver chose.
+  void _jumpTo(DateTime moment) {
+    setState(() {
+      _anchor = moment;
       _showAllShifts = false;
       _recompute();
     });
@@ -107,7 +143,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
         Padding(
           padding: const EdgeInsets.only(right: 8),
           child: IconButton(
-            tooltip: 'Add shift',
+            tooltip: 'Add session',
             onPressed: widget.onAddShift,
             icon: const Icon(Icons.add_rounded),
           ),
@@ -125,59 +161,78 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     onPeriodChanged: _changePeriod,
                     onStep: _step,
                   ),
-                  if (shiftsNeedingCostReview.isNotEmpty) ...[
-                    const SizedBox(height: Space.md),
-                    _CostReviewNotice(
-                      count: shiftsNeedingCostReview.length,
-                      onReview: () => _openShift(shiftsNeedingCostReview.first),
-                    ),
-                  ],
-                  const SizedBox(height: Space.md),
-                  PeriodPerformanceSection(performance: _performance),
-                  const SizedBox(height: Space.md),
-                  CostBreakdownSection(summary: _performance.summary),
-                  PlatformPerformanceSection(shifts: _periodShifts),
-                  const SizedBox(height: Space.md),
-                  EarningsDnaSection(shifts: _periodShifts),
-                  const SizedBox(height: 26),
-                  if (displayedShifts.isNotEmpty) ...[
-                    Text(
-                      _showAllShifts ? 'All shifts' : _periodShiftTitle(),
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
+                  // An empty window has nothing for the analytics cards to
+                  // read, and a stack of them saying so in four different ways
+                  // buried the only useful thing left to say: where the
+                  // sessions actually are.
+                  if (_periodShifts.isEmpty) ...[
+                    if (_nearest != null) ...[
+                      const SizedBox(height: Space.md),
+                      _NearestSessionCard(
+                        nearest: _nearest!,
+                        period: _period,
+                        now: _now,
+                        onJump: () => _jumpTo(_nearest!.shift.completedAt),
                       ),
-                    ),
+                    ],
+                  ] else ...[
+                    if (shiftsNeedingCostReview.isNotEmpty) ...[
+                      const SizedBox(height: Space.md),
+                      _CostReviewNotice(
+                        count: shiftsNeedingCostReview.length,
+                        onReview: () =>
+                            _openShift(shiftsNeedingCostReview.first),
+                      ),
+                    ],
                     const SizedBox(height: Space.md),
-                    // Grouped by day, because a bare list of shifts makes the
-                    // reader add up their own Tuesday. The header carries the
-                    // day's net so the list answers the same question the
-                    // chart above it does.
-                    for (final day in _byDay(displayedShifts)) ...[
-                      _DayHeader(date: day.date, shifts: day.shifts),
-                      const SizedBox(height: Space.sm),
-                      for (final shift in day.shifts) ...[
-                        _HistoryRow(
-                          shift: shift,
-                          onTap: () => _openShift(shift),
-                        ),
+                    PeriodPerformanceSection(performance: _performance),
+                    const SizedBox(height: Space.md),
+                    CostBreakdownSection(summary: _performance.summary),
+                    PlatformPerformanceSection(shifts: _periodShifts),
+                    // Earnings DNA is not repeated here. It lives on Coach's
+                    // Best times screen, which reads the same
+                    // `ShiftAnalytics.earningsPatterns` data and ranks it in
+                    // full; History carried a second copy of the same grid and
+                    // the same "N of 4 patterns tracked" progress line.
+                    Space.gapXl,
+                    if (displayedShifts.isNotEmpty) ...[
+                      Text(
+                        _showAllShifts ? 'All sessions' : _periodShiftTitle(),
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w700),
+                      ),
+                      const SizedBox(height: Space.md),
+                      // Grouped by day, because a bare list of shifts makes
+                      // the reader add up their own Tuesday. The header
+                      // carries the day's net so the list answers the same
+                      // question the chart above it does.
+                      for (final day in _byDay(displayedShifts)) ...[
+                        _DayHeader(date: day.date, shifts: day.shifts),
+                        const SizedBox(height: Space.sm),
+                        for (final shift in day.shifts) ...[
+                          _HistoryRow(
+                            shift: shift,
+                            onTap: () => _openShift(shift),
+                          ),
+                          const SizedBox(height: Space.sm),
+                        ],
                         const SizedBox(height: Space.sm),
                       ],
-                      const SizedBox(height: Space.sm),
                     ],
-                  ],
-                  if (_ordered.length > _periodShifts.length) ...[
-                    Align(
-                      alignment: Alignment.center,
-                      child: TextButton(
-                        onPressed: () =>
-                            setState(() => _showAllShifts = !_showAllShifts),
-                        child: Text(
-                          _showAllShifts
-                              ? 'Show selected period'
-                              : 'View all shifts',
+                    if (_ordered.length > _periodShifts.length) ...[
+                      Align(
+                        alignment: Alignment.center,
+                        child: TextButton(
+                          onPressed: () =>
+                              setState(() => _showAllShifts = !_showAllShifts),
+                          child: Text(
+                            _showAllShifts
+                                ? 'Show selected period'
+                                : 'View all sessions',
+                          ),
                         ),
                       ),
-                    ),
+                    ],
                   ],
                   const SizedBox(height: Space.bottomNavClearance),
                 ],
@@ -204,13 +259,13 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   String _periodShiftTitle() {
     if (!_performance.range.isCurrent(_now)) {
-      return 'Shifts · ${_performance.range.label(_now)}';
+      return 'Sessions · ${_performance.range.label(_now)}';
     }
     return switch (_period) {
-      ReportPeriod.day => 'Shifts today',
-      ReportPeriod.week => 'Shifts this week',
-      ReportPeriod.month => 'Shifts this month',
-      ReportPeriod.year => 'Shifts this year',
+      ReportPeriod.day => 'Sessions today',
+      ReportPeriod.week => 'Sessions this week',
+      ReportPeriod.month => 'Sessions this month',
+      ReportPeriod.year => 'Sessions this year',
     };
   }
 
@@ -257,8 +312,8 @@ class _CostReviewNotice extends StatelessWidget {
           Expanded(
             child: Text(
               count == 1
-                  ? 'Review costs for 1 imported shift'
-                  : 'Review costs for $count imported shifts',
+                  ? 'Review costs for 1 imported session'
+                  : 'Review costs for $count imported sessions',
               maxLines: 2,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: colors.onTertiaryContainer,
@@ -274,6 +329,110 @@ class _CostReviewNotice extends StatelessWidget {
               minimumSize: const Size(44, 40),
             ),
             child: const Text('Review'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Where the nearest session sits relative to the empty window on screen.
+enum _NearestKind { latest, earlier, earliest }
+
+typedef _NearestSession = ({Shift shift, _NearestKind kind});
+
+/// The whole of an empty window: where the sessions are, and one tap to go
+/// there.
+///
+/// It replaces the analytics stack rather than joining it. A week with nothing
+/// in it used to print an empty chart, an empty cost breakdown and a platform
+/// comparison counting to zero — four restatements of "no data" and no way out
+/// of the window except stepping back through it one arrow tap at a time.
+class _NearestSessionCard extends StatelessWidget {
+  const _NearestSessionCard({
+    required this.nearest,
+    required this.period,
+    required this.now,
+    required this.onJump,
+  });
+
+  final _NearestSession nearest;
+  final ReportPeriod period;
+  final DateTime now;
+  final VoidCallback onJump;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final at = nearest.shift.completedAt;
+    final date = DateFormat(
+      at.year == now.year ? 'EEEE, MMMM d' : 'EEEE, MMMM d, y',
+      'en_US',
+    ).format(at);
+    final backwards = nearest.kind != _NearestKind.earliest;
+
+    return GlassSurface(
+      key: const ValueKey('nearest-session-card'),
+      padding: const EdgeInsets.all(Space.xl),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          // One line, always: a long weekday and a spelled-out month can run
+          // past a narrow screen, and the sentence shrinks to fit rather than
+          // wrapping to a ragged second line.
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              switch (nearest.kind) {
+                _NearestKind.latest => 'Your most recent session was $date.',
+                _NearestKind.earlier =>
+                  'The nearest session before this was $date.',
+                _NearestKind.earliest => 'Your first session was $date.',
+              },
+              maxLines: 1,
+              softWrap: false,
+              textAlign: TextAlign.center,
+              style: textTheme.bodySmall?.copyWith(color: colors.onSurface),
+            ),
+          ),
+          Space.gapSm,
+          // A link rather than a filled button: the card is a note about where
+          // the sessions are, and a full-weight button on an otherwise empty
+          // screen read as the screen's primary action instead of a shortcut.
+          Material(
+            type: MaterialType.transparency,
+            child: InkWell(
+              key: const ValueKey('go-to-nearest-session'),
+              onTap: onJump,
+              borderRadius: BorderRadius.circular(Radii.sm),
+              child: Padding(
+                // Vertical only, so the link still clears the 44pt tap target
+                // while staying flush with the sentence above it.
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      // A clock inside a circular arrow, turning the way the
+                      // jump travels through time.
+                      backwards ? Icons.history_rounded : Icons.update_rounded,
+                      size: 16,
+                      color: colors.primary,
+                    ),
+                    const SizedBox(width: Space.sm),
+                    Text(
+                      'Go to that ${period.label.toLowerCase()}',
+                      // The link carries its weight in colour, not in bold.
+                      style: textTheme.bodySmall?.copyWith(
+                        color: colors.primary,
+                        fontWeight: FontWeight.w400,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ),
         ],
       ),
@@ -303,14 +462,14 @@ class _EmptyHistory extends StatelessWidget {
             ),
             const SizedBox(height: 20),
             Text(
-              'No shifts yet',
+              'No sessions yet',
               style: Theme.of(
                 context,
               ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 8),
             Text(
-              'Your completed shifts will appear here with their true-profit details.',
+              'Your completed sessions will appear here with their true-profit details.',
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -321,7 +480,7 @@ class _EmptyHistory extends StatelessWidget {
             FilledButton.icon(
               onPressed: onAddShift,
               icon: const Icon(Icons.add_rounded, size: 18),
-              label: const Text('Add first shift'),
+              label: const Text('Add first session'),
             ),
           ],
         ),
@@ -373,7 +532,7 @@ class _DayHeader extends StatelessWidget {
           ),
           const SizedBox(width: Space.sm),
           Text(
-            '${shifts.length} ${shifts.length == 1 ? 'shift' : 'shifts'}',
+            '${shifts.length} ${shifts.length == 1 ? 'session' : 'sessions'}',
             style: textTheme.labelSmall?.copyWith(
               color: colors.onSurfaceVariant,
             ),

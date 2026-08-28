@@ -3,10 +3,9 @@ import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
 
 class BrandMark extends StatelessWidget {
-  const BrandMark({super.key, this.size = 72, this.showShadow = false});
+  const BrandMark({super.key, this.size = 72});
 
   final double size;
-  final bool showShadow;
 
   @override
   Widget build(BuildContext context) {
@@ -27,15 +26,6 @@ class BrandMark extends StatelessWidget {
               end: Alignment.bottomRight,
               colors: [AppColors.brand, AppColors.brandDeep],
             ),
-            boxShadow: showShadow
-                ? [
-                    BoxShadow(
-                      color: AppColors.brandDeep.withValues(alpha: .24),
-                      blurRadius: size * .35,
-                      offset: Offset(0, size * .16),
-                    ),
-                  ]
-                : null,
           ),
           child: CustomPaint(painter: BrandGlyphPainter()),
         ),

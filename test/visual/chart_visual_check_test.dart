@@ -14,9 +14,17 @@ import 'package:driver_wealth_os/features/accounts/domain/work_platform.dart';
 import 'package:driver_wealth_os/features/admin/application/admin_repository.dart';
 import 'package:driver_wealth_os/features/admin/domain/admin_models.dart';
 import 'package:driver_wealth_os/features/admin/presentation/admin_dashboard_screen.dart';
+import 'package:driver_wealth_os/features/coach/presentation/best_times_screen.dart';
+import 'package:driver_wealth_os/features/coach/presentation/coach_screen.dart';
 import 'package:driver_wealth_os/features/driving/domain/driving_session.dart';
 import 'package:driver_wealth_os/features/history/presentation/history_screen.dart';
 import 'package:driver_wealth_os/features/settings/domain/distance_unit.dart';
+import 'package:driver_wealth_os/features/settings/domain/driver_preferences.dart';
+// Both libraries declare a `DistanceUnit`; this file already uses the stored
+// one, so the display-side library is brought in for its units type only.
+import 'package:driver_wealth_os/features/settings/domain/measurement_units.dart'
+    show MeasurementUnits;
+import 'package:driver_wealth_os/features/shifts/domain/shift_analytics.dart';
 import 'package:driver_wealth_os/features/settings/domain/driving_costs.dart';
 import 'package:driver_wealth_os/features/settings/presentation/settings_screen.dart';
 import 'package:driver_wealth_os/features/shifts/domain/shift.dart';
@@ -151,6 +159,22 @@ void main() {
     );
   });
 
+  // A window with nothing in it. The analytics stack is replaced by one card
+  // pointing at where the sessions actually are, so this is the state to check
+  // by eye: it is the whole screen below the hero.
+  testWidgets('history empty period', (tester) async {
+    await capture(tester, 'history_empty_period', _historyEmptyWeek());
+  });
+
+  testWidgets('history empty period dark', (tester) async {
+    await capture(
+      tester,
+      'history_empty_period_dark',
+      _historyEmptyWeek(),
+      brightness: Brightness.dark,
+    );
+  });
+
   // Selecting a bucket paints a highlight behind the bar, which is easy to get
   // wrong: a full-slot grey wash reads as a rendering artefact rather than a
   // selection, so the selected state is checked on its own.
@@ -205,8 +229,19 @@ void main() {
     );
   });
 
+  // Earnings DNA now lives on Coach's Best times screen rather than being
+  // drawn a second time on History, so the heatmap is captured there.
   testWidgets('earnings dna light', (tester) async {
-    await capture(tester, 'dna_light', _history(), scrollBy: 900);
+    await capture(
+      tester,
+      'dna_light',
+      BestTimesScreen(
+        patterns: ShiftAnalytics.earningsPatterns(
+          _seed().where((shift) => shift.hours > 0),
+        ),
+        units: const MeasurementUnits(),
+      ),
+    );
   });
 
   testWidgets('today idle with start driving', (tester) async {
@@ -344,6 +379,24 @@ void main() {
     );
   });
 
+  // Coach is the screen with the most type ranks stacked down one scroll — an
+  // eyebrow, a 40pt figure, a card title, a section heading and two body sizes
+  // — so its rhythm is the thing a validator cannot sign off on.
+  testWidgets('coach light', (tester) async {
+    await capture(tester, 'coach_light', _coach());
+  });
+
+  testWidgets('coach dark', (tester) async {
+    await capture(tester, 'coach_dark', _coach(), brightness: Brightness.dark);
+  });
+
+  // The chat card and the page footnote sit below the fold. Scrolled far
+  // enough to show every suggested question, since the chip list is gated on
+  // the data behind each one and is the part most likely to overflow.
+  testWidgets('coach chat', (tester) async {
+    await capture(tester, 'coach_chat', _coach(), scrollBy: 1250);
+  });
+
   testWidgets('admin dashboard light', (tester) async {
     await capture(
       tester,
@@ -391,6 +444,26 @@ Widget _history() => HistoryScreen(
   onAddShift: () {},
   onShiftUpdated: (_) {},
   onShiftDeleted: (_) {},
+);
+
+/// The same screen with every session pushed a fortnight back, so the window it
+/// opens on — this week — is empty.
+Widget _historyEmptyWeek() => HistoryScreen(
+  shifts: [
+    for (final shift in _seed())
+      shift.copyWith(
+        completedAt: shift.completedAt.subtract(const Duration(days: 14)),
+      ),
+  ],
+  onAddShift: () {},
+  onShiftUpdated: (_) {},
+  onShiftDeleted: (_) {},
+);
+
+Widget _coach() => CoachScreen(
+  shifts: _seed(),
+  preferences: const DriverPreferences(driverName: 'Ahmed', dailyGoal: 250),
+  onAddShift: () {},
 );
 
 Widget _today({required bool losing}) => TodayScreen(

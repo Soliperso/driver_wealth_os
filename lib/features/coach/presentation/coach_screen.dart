@@ -191,14 +191,14 @@ class _CoachScreenState extends State<CoachScreen> {
         ],
         Space.gapXl,
         _SuggestedQuestions(questions: _dashboard.questions),
-        Space.gapLg,
+        // A page-level footnote, so it takes the page's section break rather
+        // than the tighter gap that made it read as part of the chat card.
+        Space.gapXl,
         Text(
           'Recommendations use only your saved sessions, preferences and '
           'calculated profit. They are not financial or tax advice.',
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-            height: 1.4,
-          ),
+          // `bodySmall` is already muted and already carries its line height.
+          style: Theme.of(context).textTheme.bodySmall,
         ),
         const SizedBox(height: Space.bottomNavClearance),
       ],
@@ -251,41 +251,43 @@ class _PriorityInsight extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            // Every child of this row is a single line, so they centre on the
+            // icon rather than each being nudged down by a hand-picked top
+            // padding — which is what the eyebrow and the chevron used to do,
+            // at two different values.
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               SoftIcon(_icon(insight.kind), size: 20),
               const SizedBox(width: Space.md),
               Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.only(top: Space.sm),
-                  child: Text(
-                    // Uppercased here rather than in the engine: the label is
-                    // sentence case so it reads correctly as a [StatTile]
-                    // label on a card, and [StatEmphasis.compact] does this
-                    // same transform there.
-                    (headline?.heroLabel ?? 'Your next move').toUpperCase(),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: textTheme.labelSmall?.copyWith(
-                      color: colors.onSurfaceVariant,
-                      letterSpacing: .6,
-                      fontWeight: FontWeight.w700,
-                    ),
+                child: Text(
+                  // Uppercased here rather than in the engine: the label is
+                  // sentence case so it reads correctly as a [StatTile] label
+                  // on a card, and [StatEmphasis.compact] does this same
+                  // transform there.
+                  (headline?.heroLabel ?? 'Your next move').toUpperCase(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: textTheme.labelSmall?.copyWith(
+                    color: colors.onSurfaceVariant,
+                    letterSpacing: .6,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
               ),
               if (tap != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: Space.xs),
-                  child: Icon(
-                    Icons.chevron_right_rounded,
-                    color: colors.onSurfaceVariant,
-                  ),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  color: colors.onSurfaceVariant,
                 ),
             ],
           ),
+          // The eyebrow labels whatever leads the card — the figure, or the
+          // title when there is no figure — so it binds tight to it at the
+          // same gap History's hero uses. The rank is carried by the size
+          // contrast, not by the gap.
+          Space.gapXs,
           if (headline != null) ...[
-            Space.gapMd,
             Align(
               alignment: Alignment.centerLeft,
               child: FittedBox(
@@ -302,21 +304,36 @@ class _PriorityInsight extends StatelessWidget {
                 ),
               ),
             ),
-            Space.gapSm,
-          ] else
-            Space.gapMd,
+            // The figure is its own tier; the title and message below it are
+            // one block. A gap here equal to the title/message gap glued the
+            // figure to the sentence and left the card with no rhythm.
+            Space.gapLg,
+          ],
           Text(
             insight.title,
             // Down from headlineSmall: with a figure above it, the title is no
             // longer the biggest thing on the card and should not be drawn as
             // though it were. One step above the [SectionCardTitle] used by the
-            // supporting cards, which is the whole of the rank it needs.
-            style: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+            // supporting cards — which is the whole of the rank it needs, and
+            // which it did not actually have while both were `titleMedium`.
+            //
+            // The theme's own w700, not the w800 this used to force: at 22pt
+            // the extra weight put the title level with the figure above it and
+            // the card had two things shouting. Size carries the rank here.
+            // onSurfaceVariant dims the color to soften the hierarchy below the
+            // figure without losing readability.
+            style: textTheme.titleLarge?.copyWith(
+              color: colors.onSurfaceVariant,
+            ),
           ),
+          // [SectionCardTitle]'s title-to-subtitle gap, because this is the
+          // same pairing one rank up.
           Space.gapSm,
           Text(
             insight.message,
-            style: textTheme.bodyMedium?.copyWith(height: 1.48),
+            // Line height comes from the theme. Coach was setting 1.4, 1.45 and
+            // 1.48 on body text within one screen.
+            style: textTheme.bodyMedium,
           ),
           if (insight.figures.isNotEmpty) ...[
             Space.gapLg,
@@ -400,8 +417,11 @@ class _InsightCard extends StatelessWidget {
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
           ),
+          // One heading-to-content gap, whichever of the two bodies a card
+          // happens to be showing. A bar at 12 and a panel at 16 made two cards
+          // sitting on top of each other breathe differently.
           if (progress != null) ...[
-            Space.gapMd,
+            Space.gapLg,
             LearningProgress(
               done: progress.done,
               needed: progress.needed,
@@ -446,7 +466,6 @@ class _SuggestedQuestionsState extends State<_SuggestedQuestions> {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
     return GlassSurface(
       padding: const EdgeInsets.all(Space.xl),
       child: Column(
@@ -483,9 +502,7 @@ class _SuggestedQuestionsState extends State<_SuggestedQuestions> {
             Space.gapMd,
             Text(
               'Simulated locally from saved sessions. No AI service is connected.',
-              style: Theme.of(
-                context,
-              ).textTheme.bodySmall?.copyWith(color: colors.onSurfaceVariant),
+              style: Theme.of(context).textTheme.bodySmall,
             ),
           ],
         ],
@@ -550,12 +567,7 @@ class _ChatBubble extends StatelessWidget {
               bottomRight: Radius.circular(fromCoach ? Radii.md : 4),
             ),
           ),
-          child: Text(
-            message,
-            style: Theme.of(
-              context,
-            ).textTheme.bodyMedium?.copyWith(height: 1.4),
-          ),
+          child: Text(message, style: Theme.of(context).textTheme.bodyMedium),
         ),
       ),
     );
@@ -589,7 +601,10 @@ class _EmptyCoach extends StatelessWidget {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    SoftIcon(Icons.auto_awesome_rounded, size: 26),
+                    // The circle is a fixed 36; at 26 the glyph filled it and
+                    // read as a different component from every other [SoftIcon]
+                    // in the app.
+                    SoftIcon(Icons.auto_awesome_rounded, size: 20),
                     const SizedBox(height: Space.lg),
                     Text(
                       'Nothing to coach yet',
@@ -597,14 +612,13 @@ class _EmptyCoach extends StatelessWidget {
                         fontWeight: FontWeight.w800,
                       ),
                     ),
-                    const SizedBox(height: Space.sm),
+                    const SizedBox(height: Space.xs),
                     Text(
                       'Coach needs earnings, hours, distance and costs before '
                       'it can compare which of your sessions actually paid.',
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        height: 1.45,
                       ),
                     ),
                     if (add != null) ...[

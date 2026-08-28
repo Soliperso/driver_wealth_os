@@ -96,7 +96,6 @@ class GlassSurface extends StatelessWidget {
     this.tint,
     this.blur,
     this.elevation = Elevation.raised,
-    this.shadow = true,
   });
 
   final Widget child;
@@ -108,16 +107,9 @@ class GlassSurface extends StatelessWidget {
   final Color? tint;
   final double? blur;
 
-  /// Which rank this surface occupies. Drives radius, blur, border and shadow
-  /// together so a hero reads heavier than a list row.
+  /// Which rank this surface occupies. Drives radius, blur and border together
+  /// so a hero reads heavier than a list row.
   final Elevation elevation;
-
-  /// Drops the rank's cast shadow while keeping its radius and blur.
-  ///
-  /// For screens that stack several cards down one scroll: on a near-black
-  /// background the shadows read as smudges between the cards rather than as
-  /// lift, and the tint alone separates them well enough.
-  final bool shadow;
 
   @override
   Widget build(BuildContext context) {
@@ -132,7 +124,8 @@ class GlassSurface extends StatelessWidget {
     final effectiveBlur = blur ?? elevation.blur;
     final borderRadius = BorderRadius.circular(effectiveRadius);
 
-    final surface = ClipRRect(
+    // No cast shadow. Rank comes from radius, blur and tint; see [Elevation].
+    return ClipRRect(
       borderRadius: borderRadius,
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: effectiveBlur, sigmaY: effectiveBlur),
@@ -145,25 +138,6 @@ class GlassSurface extends StatelessWidget {
           child: child,
         ),
       ),
-    );
-
-    if (!shadow || elevation.shadowOpacity == 0) return surface;
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        borderRadius: borderRadius,
-        boxShadow: [
-          BoxShadow(
-            color: (isDark ? Colors.black : AppColors.brandDeep).withValues(
-              alpha: isDark
-                  ? elevation.shadowOpacity * 2
-                  : elevation.shadowOpacity,
-            ),
-            blurRadius: elevation == Elevation.hero ? 28 : 16,
-            offset: Offset(0, elevation == Elevation.hero ? 12 : 6),
-          ),
-        ],
-      ),
-      child: surface,
     );
   }
 }

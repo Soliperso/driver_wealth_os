@@ -477,7 +477,7 @@ class _BucketDetailPanel extends StatelessWidget {
                         current.shiftCount == 0
                             ? current.detailLabel
                             : '${current.detailLabel} · ${current.shiftCount} '
-                                  '${current.shiftCount == 1 ? 'shift' : 'shifts'}',
+                                  '${current.shiftCount == 1 ? 'session' : 'sessions'}',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: textTheme.labelLarge?.copyWith(
@@ -487,7 +487,7 @@ class _BucketDetailPanel extends StatelessWidget {
                       const SizedBox(height: 2),
                       Text(
                         current.shiftCount == 0
-                            ? 'No shifts'
+                            ? 'No sessions'
                             : 'Earned ${Money.cents(current.summary.gross)} · '
                                   'Costs ${Money.cents(current.summary.totalExpenses)} · '
                                   '${Money.hours(current.summary.hours)} · '
