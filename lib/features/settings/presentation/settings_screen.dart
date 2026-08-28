@@ -218,13 +218,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   title: 'Privacy & security',
                   onTap: widget.onOpenPrivacy,
                 ),
-                if (widget.onConnectAccounts != null)
-                  _SettingsTile(
-                    key: const ValueKey('settings-work-accounts'),
-                    icon: Icons.link_rounded,
-                    title: 'Work accounts',
-                    onTap: widget.onConnectAccounts,
-                  ),
+                // if (widget.onConnectAccounts != null)
+                //   _SettingsTile(
+                //     key: const ValueKey('settings-work-accounts'),
+                //     icon: Icons.link_rounded,
+                //     title: 'Work accounts',
+                //     onTap: widget.onConnectAccounts,
+                //   ),
                 if (widget.onOpenAdmin != null)
                   _SettingsTile(
                     key: const ValueKey('settings-open-admin'),
@@ -576,7 +576,7 @@ class _SettingsSection extends StatelessWidget {
         child: Text(
           title.toUpperCase(),
           style: Theme.of(context).textTheme.labelMedium?.copyWith(
-            color: Theme.of(context).colorScheme.primary,
+            color: Theme.of(context).colorScheme.onSurface,
             fontWeight: FontWeight.w800,
             letterSpacing: .8,
           ),
@@ -685,74 +685,148 @@ class _DrivingCostSummary extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
     final fuel = unit.rateFromPerMile(costs.fuelCostPerMile);
     final vehicle = unit.rateFromPerMile(costs.vehicleCostPerMile);
     final allIn = unit.rateFromPerMile(costs.allInCostPerMile);
+    final distance = unit == DistanceUnit.miles ? 'mile' : 'km';
+    final fuelSwatch = colors.primary;
+    final vehicleSwatch = colors.primary.withValues(alpha: .38);
     return GlassSurface(
       key: const ValueKey('settings-all-in-cost'),
-      padding: const EdgeInsets.all(Space.lg),
-      tint: colors.primaryContainer.withValues(alpha: .74),
+      padding: const EdgeInsets.all(Space.xl),
+      tint: colors.primaryContainer.withValues(alpha: .82),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'YOUR DRIVING COST',
-            style: Theme.of(context).textTheme.labelMedium?.copyWith(
-              color: colors.primary,
-              fontWeight: FontWeight.w800,
-              letterSpacing: .6,
-            ),
-          ),
-          const SizedBox(height: Space.sm),
-          Text(
-            '${Money.cents(allIn)} / ${unit.symbol == 'mi' ? 'mile' : 'km'}',
-            style: Theme.of(
-              context,
-            ).textTheme.headlineMedium?.copyWith(fontFeatures: tabularFigures),
-          ),
-          const SizedBox(height: Space.lg),
-          if (allIn > 0)
-            ClipRRect(
-              borderRadius: BorderRadius.circular(6),
-              child: Row(
-                children: [
-                  Expanded(
-                    flex: (fuel / allIn * 1000).round().clamp(1, 999),
-                    child: Container(height: 8, color: colors.primary),
-                  ),
-                  Expanded(
-                    flex: (vehicle / allIn * 1000).round().clamp(1, 999),
-                    child: Container(
-                      height: 8,
-                      color: colors.primary.withValues(alpha: .38),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          const SizedBox(height: Space.md),
           Row(
             children: [
               Expanded(
-                child: _CostShare(
-                  label: 'Fuel',
-                  amount: Money.cents(fuel),
-                  share: allIn > 0 ? fuel / allIn : 0,
-                  swatch: colors.primary,
+                child: Text(
+                  'YOUR DRIVING COST',
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: colors.primary,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1,
+                  ),
                 ),
               ),
-              Expanded(
-                child: _CostShare(
-                  label: 'Vehicle',
-                  amount: Money.cents(vehicle),
-                  share: allIn > 0 ? vehicle / allIn : 0,
-                  swatch: colors.primary.withValues(alpha: .38),
+              // The unit rides in the pill so the figure below is money alone:
+              // at 32/w800 a trailing "/ mile" carried the same weight as the
+              // amount and split the eye between them.
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: colors.surface.withValues(alpha: .55),
+                  borderRadius: BorderRadius.circular(Radii.pill),
+                ),
+                child: Text(
+                  'per $distance',
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: colors.onSurface,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
             ],
           ),
+          Space.gapLg,
+          Text(
+            Money.cents(allIn),
+            style: theme.textTheme.headlineMedium?.copyWith(
+              fontFeatures: tabularFigures,
+            ),
+          ),
+          const SizedBox(height: Space.xs),
+          Text(
+            'Fuel and vehicle wear on every $distance you drive.',
+            style: theme.textTheme.bodySmall,
+          ),
+          Space.gapLg,
+          // Both gaps belong to the bar: without it the legend would sit under
+          // a double gap it did not ask for.
+          if (allIn > 0) ...[
+            _CostSplitBar(
+              fuelShare: fuel / allIn,
+              fuelSwatch: fuelSwatch,
+              vehicleSwatch: vehicleSwatch,
+            ),
+            Space.gapLg,
+          ],
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  child: _CostShare(
+                    label: 'Fuel',
+                    amount: Money.cents(fuel),
+                    share: allIn > 0 ? fuel / allIn : 0,
+                    swatch: fuelSwatch,
+                  ),
+                ),
+                Container(
+                  width: 1,
+                  margin: const EdgeInsets.symmetric(horizontal: Space.lg),
+                  color: colors.onSurface.withValues(alpha: .09),
+                ),
+                Expanded(
+                  child: _CostShare(
+                    label: 'Vehicle',
+                    amount: Money.cents(vehicle),
+                    share: allIn > 0 ? vehicle / allIn : 0,
+                    swatch: vehicleSwatch,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
+      ),
+    );
+  }
+}
+
+/// The fuel/vehicle split as one unbroken pill, the two shares meeting at the
+/// split. The rounding lives on the outer clip so the join stays seamless.
+class _CostSplitBar extends StatelessWidget {
+  const _CostSplitBar({
+    required this.fuelShare,
+    required this.fuelSwatch,
+    required this.vehicleSwatch,
+  });
+
+  final double fuelShare;
+  final Color fuelSwatch;
+  final Color vehicleSwatch;
+
+  @override
+  Widget build(BuildContext context) {
+    final fuelFlex = (fuelShare * 1000).round().clamp(0, 1000);
+    final vehicleFlex = 1000 - fuelFlex;
+    // A share worth nothing is left out rather than given a hairline: a sliver
+    // of the other colour at the end of the bar reads as a rendering fault.
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(Radii.pill),
+      child: SizedBox(
+        height: 8,
+        child: Row(
+          // Stretch, or a childless ColoredBox collapses to nothing.
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (fuelFlex > 0)
+              Expanded(flex: fuelFlex, child: ColoredBox(color: fuelSwatch)),
+            if (vehicleFlex > 0)
+              Expanded(
+                flex: vehicleFlex,
+                child: ColoredBox(color: vehicleSwatch),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -773,7 +847,8 @@ class _CostShare extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -784,28 +859,45 @@ class _CostShare extends StatelessWidget {
               height: 8,
               decoration: BoxDecoration(color: swatch, shape: BoxShape.circle),
             ),
-            const SizedBox(width: Space.xs),
+            const SizedBox(width: Space.sm),
             Text(
               label,
-              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+              style: theme.textTheme.labelMedium?.copyWith(
                 color: colors.onSurfaceVariant,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ],
         ),
         const SizedBox(height: Space.xs),
-        Text(
-          amount,
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w800,
-            fontFeatures: tabularFigures,
-          ),
-        ),
-        Text(
-          '${(share * 100).round()}% of the total',
-          style: Theme.of(
-            context,
-          ).textTheme.bodySmall?.copyWith(color: colors.onSurfaceVariant),
+        // Amount and share share one line: as a third stacked line the
+        // percentage doubled the column's height to caption a number that is
+        // already next to its own bar segment.
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.baseline,
+          textBaseline: TextBaseline.alphabetic,
+          children: [
+            Flexible(
+              child: Text(
+                amount,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w800,
+                  fontFeatures: tabularFigures,
+                ),
+              ),
+            ),
+            const SizedBox(width: Space.sm),
+            Text(
+              '${(share * 100).round()}%',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: colors.onSurfaceVariant,
+                fontWeight: FontWeight.w600,
+                fontFeatures: tabularFigures,
+              ),
+            ),
+          ],
         ),
       ],
     );
