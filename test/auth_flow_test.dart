@@ -13,6 +13,9 @@ import 'support/fake_location_tracker.dart';
 /// The point of these tests is the thing the app previously could not do:
 /// survive a reinstall. An anonymous session could not be recovered by anyone,
 /// so a driver's whole history depended on one device's storage.
+///
+/// A password is the front door; the emailed code is the second one, kept so
+/// that forgetting a password is not the same as losing the account.
 void main() {
   Shift shift(String id) => Shift.single(
     id: id,
@@ -42,6 +45,20 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  /// Taps something that may be below the fold.
+  Future<void> press(WidgetTester tester, String key) async {
+    final finder = find.byKey(ValueKey(key));
+    await tester.ensureVisible(finder);
+    await tester.pumpAndSettle();
+    await tester.tap(finder);
+    await tester.pumpAndSettle();
+  }
+
+  /// The code flow is now reached from the login screen rather than being the
+  /// screen itself.
+  Future<void> goToCodeSignIn(WidgetTester tester) =>
+      press(tester, 'go-code-sign-in');
+
   testWidgets('a signed-out driver is asked to sign in before anything else', (
     tester,
   ) async {
@@ -58,7 +75,216 @@ void main() {
     );
 
     // Sign-in precedes even onboarding: the name belongs to an account.
-    expect(find.byKey(const ValueKey('sign-in-email-field')), findsOneWidget);
+    expect(find.byKey(const ValueKey('login-email-field')), findsOneWidget);
+    expect(find.text('Hi, Ahmed!'), findsNothing);
+  });
+
+  testWidgets('an email and password sign the driver in', (tester) async {
+    final tracker = FakeLocationTracker();
+    addTearDown(tracker.dispose);
+    final gateway = FakeAuthGateway();
+    gateway.passwords['driver@example.com'] = 'CorrectHorse9';
+    addTearDown(gateway.dispose);
+
+    await pumpApp(
+      tester,
+      store: MemoryAppStore(const AppSnapshot(driverName: 'Ahmed')),
+      gateway: gateway,
+      tracker: tracker,
+    );
+
+    await tester.enterText(
+      find.byKey(const ValueKey('login-email-field')),
+      'driver@example.com',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('login-password-field')),
+      'CorrectHorse9',
+    );
+    await press(tester, 'login-submit');
+
+    expect(find.text('Hi, Ahmed!'), findsOneWidget);
+  });
+
+  testWidgets('a wrong password is reported and signs nobody in', (
+    tester,
+  ) async {
+    final tracker = FakeLocationTracker();
+    addTearDown(tracker.dispose);
+    final gateway = FakeAuthGateway();
+    gateway.passwords['driver@example.com'] = 'CorrectHorse9';
+    addTearDown(gateway.dispose);
+
+    await pumpApp(
+      tester,
+      store: MemoryAppStore(const AppSnapshot(driverName: 'Ahmed')),
+      gateway: gateway,
+      tracker: tracker,
+    );
+
+    await tester.enterText(
+      find.byKey(const ValueKey('login-email-field')),
+      'driver@example.com',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('login-password-field')),
+      'WrongHorse9',
+    );
+    await press(tester, 'login-submit');
+
+    expect(find.byKey(const ValueKey('sign-in-error')), findsOneWidget);
+    expect(find.textContaining('do not match an account'), findsOneWidget);
+    expect(find.text('Hi, Ahmed!'), findsNothing);
+  });
+
+  testWidgets('signing up names the driver without asking a second time', (
+    tester,
+  ) async {
+    final tracker = FakeLocationTracker();
+    addTearDown(tracker.dispose);
+    final gateway = FakeAuthGateway();
+    addTearDown(gateway.dispose);
+
+    // Nothing stored: without the signup name this device would land on
+    // onboarding and ask for it again.
+    await pumpApp(
+      tester,
+      store: MemoryAppStore(),
+      gateway: gateway,
+      tracker: tracker,
+    );
+
+    await press(tester, 'go-create-account');
+    await tester.enterText(
+      find.byKey(const ValueKey('sign-up-name-field')),
+      'Ahmed',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('sign-up-email-field')),
+      'new@example.com',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('sign-up-password-field')),
+      'CorrectHorse9',
+    );
+    await press(tester, 'sign-up-submit');
+
+    expect(gateway.signedUpName, 'Ahmed');
+    expect(find.text('Drive smarter.\nKeep more.'), findsNothing);
+    expect(find.text('Hi, Ahmed!'), findsOneWidget);
+  });
+
+  testWidgets('a password too weak for the backend never leaves the device', (
+    tester,
+  ) async {
+    final tracker = FakeLocationTracker();
+    addTearDown(tracker.dispose);
+    final gateway = FakeAuthGateway();
+    addTearDown(gateway.dispose);
+
+    await pumpApp(
+      tester,
+      store: MemoryAppStore(),
+      gateway: gateway,
+      tracker: tracker,
+    );
+
+    await press(tester, 'go-create-account');
+    await tester.enterText(
+      find.byKey(const ValueKey('sign-up-name-field')),
+      'Ahmed',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('sign-up-email-field')),
+      'new@example.com',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('sign-up-password-field')),
+      'short',
+    );
+    await press(tester, 'sign-up-submit');
+
+    // Checked here rather than round-tripped, so the rejection is written for
+    // a driver instead of quoted from the provider.
+    expect(find.textContaining('at least 10 characters'), findsOneWidget);
+    expect(gateway.signedUpName, isNull);
+    expect(gateway.passwords, isEmpty);
+  });
+
+  testWidgets('a forgotten password is reset with an emailed code', (
+    tester,
+  ) async {
+    final tracker = FakeLocationTracker();
+    addTearDown(tracker.dispose);
+    final gateway = FakeAuthGateway();
+    gateway.passwords['driver@example.com'] = 'ForgottenOne9';
+    addTearDown(gateway.dispose);
+
+    await pumpApp(
+      tester,
+      store: MemoryAppStore(const AppSnapshot(driverName: 'Ahmed')),
+      gateway: gateway,
+      tracker: tracker,
+    );
+
+    await press(tester, 'go-forgot-password');
+    await tester.enterText(
+      find.byKey(const ValueKey('forgot-email-field')),
+      'driver@example.com',
+    );
+    await press(tester, 'forgot-submit');
+
+    expect(gateway.resetsSentTo, ['driver@example.com']);
+
+    await tester.enterText(
+      find.byKey(const ValueKey('reset-code-field')),
+      '654321',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('reset-password-field')),
+      'BrandNewOne9',
+    );
+    await press(tester, 'reset-submit');
+
+    // Signed in on the new password, and the old one no longer opens the
+    // account.
+    expect(find.text('Hi, Ahmed!'), findsOneWidget);
+    expect(gateway.passwords['driver@example.com'], 'BrandNewOne9');
+  });
+
+  testWidgets('a wrong reset code leaves the password alone', (tester) async {
+    final tracker = FakeLocationTracker();
+    addTearDown(tracker.dispose);
+    final gateway = FakeAuthGateway();
+    gateway.passwords['driver@example.com'] = 'ForgottenOne9';
+    addTearDown(gateway.dispose);
+
+    await pumpApp(
+      tester,
+      store: MemoryAppStore(const AppSnapshot(driverName: 'Ahmed')),
+      gateway: gateway,
+      tracker: tracker,
+    );
+
+    await press(tester, 'go-forgot-password');
+    await tester.enterText(
+      find.byKey(const ValueKey('forgot-email-field')),
+      'driver@example.com',
+    );
+    await press(tester, 'forgot-submit');
+
+    await tester.enterText(
+      find.byKey(const ValueKey('reset-code-field')),
+      '000000',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('reset-password-field')),
+      'BrandNewOne9',
+    );
+    await press(tester, 'reset-submit');
+
+    expect(find.byKey(const ValueKey('sign-in-error')), findsOneWidget);
+    expect(gateway.passwords['driver@example.com'], 'ForgottenOne9');
     expect(find.text('Hi, Ahmed!'), findsNothing);
   });
 
@@ -75,13 +301,12 @@ void main() {
       tracker: tracker,
     );
 
+    await goToCodeSignIn(tester);
     await tester.enterText(
       find.byKey(const ValueKey('sign-in-email-field')),
       'driver@example.com',
     );
-    await tester.ensureVisible(find.byKey(const ValueKey('send-code-button')));
-    await tester.tap(find.byKey(const ValueKey('send-code-button')));
-    await tester.pumpAndSettle();
+    await press(tester, 'send-code-button');
 
     expect(gateway.sentTo, ['driver@example.com']);
     expect(find.byKey(const ValueKey('sign-in-code-field')), findsOneWidget);
@@ -91,11 +316,7 @@ void main() {
       find.byKey(const ValueKey('sign-in-code-field')),
       '123456',
     );
-    await tester.ensureVisible(
-      find.byKey(const ValueKey('verify-code-button')),
-    );
-    await tester.tap(find.byKey(const ValueKey('verify-code-button')));
-    await tester.pumpAndSettle();
+    await press(tester, 'verify-code-button');
 
     // Straight through to the dashboard — the saved name is already there.
     expect(find.text('Hi, Ahmed!'), findsOneWidget);
@@ -116,23 +337,18 @@ void main() {
       tracker: tracker,
     );
 
+    await goToCodeSignIn(tester);
     await tester.enterText(
       find.byKey(const ValueKey('sign-in-email-field')),
       'driver@example.com',
     );
-    await tester.ensureVisible(find.byKey(const ValueKey('send-code-button')));
-    await tester.tap(find.byKey(const ValueKey('send-code-button')));
-    await tester.pumpAndSettle();
+    await press(tester, 'send-code-button');
 
     await tester.enterText(
       find.byKey(const ValueKey('sign-in-code-field')),
       '000000',
     );
-    await tester.ensureVisible(
-      find.byKey(const ValueKey('verify-code-button')),
-    );
-    await tester.tap(find.byKey(const ValueKey('verify-code-button')));
-    await tester.pumpAndSettle();
+    await press(tester, 'verify-code-button');
 
     expect(find.byKey(const ValueKey('sign-in-error')), findsOneWidget);
     expect(find.textContaining('expired or is incorrect'), findsOneWidget);
@@ -157,13 +373,12 @@ void main() {
       tracker: tracker,
     );
 
+    await goToCodeSignIn(tester);
     await tester.enterText(
       find.byKey(const ValueKey('sign-in-email-field')),
       'driver@example.com',
     );
-    await tester.ensureVisible(find.byKey(const ValueKey('send-code-button')));
-    await tester.tap(find.byKey(const ValueKey('send-code-button')));
-    await tester.pumpAndSettle();
+    await press(tester, 'send-code-button');
 
     expect(find.textContaining('Too many attempts'), findsOneWidget);
     // Still on the email step — advancing would strand the driver waiting for
@@ -184,13 +399,12 @@ void main() {
       tracker: tracker,
     );
 
+    await goToCodeSignIn(tester);
     await tester.enterText(
       find.byKey(const ValueKey('sign-in-email-field')),
       'not-an-email',
     );
-    await tester.ensureVisible(find.byKey(const ValueKey('send-code-button')));
-    await tester.tap(find.byKey(const ValueKey('send-code-button')));
-    await tester.pumpAndSettle();
+    await press(tester, 'send-code-button');
 
     expect(gateway.sentTo, isEmpty);
     expect(find.textContaining('does not look right'), findsOneWidget);
@@ -217,7 +431,7 @@ void main() {
 
     // No network is involved in restoring a session, so this is also the
     // offline-launch path.
-    expect(find.byKey(const ValueKey('sign-in-email-field')), findsNothing);
+    expect(find.byKey(const ValueKey('login-email-field')), findsNothing);
     expect(find.text('Hi, Ahmed!'), findsOneWidget);
   });
 
@@ -258,7 +472,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(gateway.signOutCount, 1);
-    expect(find.byKey(const ValueKey('sign-in-email-field')), findsOneWidget);
+    expect(find.byKey(const ValueKey('login-email-field')), findsOneWidget);
     // The next driver to use this phone must not inherit the last one's money.
     expect(store.snapshot.shifts, isEmpty);
     expect(store.snapshot.driverName, isNull);
@@ -281,7 +495,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const ValueKey('sign-in-email-field')), findsNothing);
+    expect(find.byKey(const ValueKey('login-email-field')), findsNothing);
     expect(find.text('Hi, Ahmed!'), findsOneWidget);
   });
 }

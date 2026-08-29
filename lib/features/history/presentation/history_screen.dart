@@ -196,12 +196,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     // the same "N of 4 patterns tracked" progress line.
                     Space.gapXl,
                     if (displayedShifts.isNotEmpty) ...[
-                      Text(
-                        _showAllShifts ? 'All sessions' : _periodShiftTitle(),
-                        style: Theme.of(context).textTheme.titleMedium
-                            ?.copyWith(fontWeight: FontWeight.w700),
-                      ),
-                      const SizedBox(height: Space.md),
                       // Grouped by day, because a bare list of shifts makes
                       // the reader add up their own Tuesday. The header
                       // carries the day's net so the list answers the same
@@ -255,18 +249,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
     return [
       for (final entry in days.entries) (date: entry.key, shifts: entry.value),
     ];
-  }
-
-  String _periodShiftTitle() {
-    if (!_performance.range.isCurrent(_now)) {
-      return 'Sessions · ${_performance.range.label(_now)}';
-    }
-    return switch (_period) {
-      ReportPeriod.day => 'Sessions today',
-      ReportPeriod.week => 'Sessions this week',
-      ReportPeriod.month => 'Sessions this month',
-      ReportPeriod.year => 'Sessions this year',
-    };
   }
 
   void _openShift(Shift shift) {
@@ -547,6 +529,7 @@ class _DayHeader extends StatelessWidget {
               fontFeatures: tabularFigures,
             ),
           ),
+          SizedBox(width: Space.xs + 18),
         ],
       ),
     );

@@ -124,7 +124,10 @@ class GlassSurface extends StatelessWidget {
     final effectiveBlur = blur ?? elevation.blur;
     final borderRadius = BorderRadius.circular(effectiveRadius);
 
-    // No cast shadow. Rank comes from radius, blur and tint; see [Elevation].
+    // No cast shadow. Rank comes from radius, blur and border; see [Elevation].
+    // The border is what separates a near-white card from a near-white
+    // background — without it the surface only reads where it happens to
+    // overlap a glow.
     return ClipRRect(
       borderRadius: borderRadius,
       child: BackdropFilter(
@@ -134,6 +137,13 @@ class GlassSurface extends StatelessWidget {
           decoration: BoxDecoration(
             color: surfaceColor,
             borderRadius: borderRadius,
+            border: Border.all(
+              // Dark mode needs a fainter edge: the same alpha that reads as a
+              // hairline on white reads as a drawn outline on near-black.
+              color: colors.outlineVariant.withValues(
+                alpha: elevation.borderOpacity * (isDark ? .5 : .8),
+              ),
+            ),
           ),
           child: child,
         ),
@@ -171,16 +181,25 @@ class _SoftGlow extends StatelessWidget {
   final Color color;
 
   @override
-  Widget build(BuildContext context) => IgnorePointer(
-    child: Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: RadialGradient(
-          colors: [color.withValues(alpha: .12), color.withValues(alpha: 0)],
+  Widget build(BuildContext context) {
+    // At 12% the glows were invisible in light mode and the background read as
+    // flat grey. Dark stays low: the same strength there turns into a visible
+    // green haze rather than a suggestion of depth.
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return IgnorePointer(
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: RadialGradient(
+            colors: [
+              color.withValues(alpha: isDark ? .10 : .20),
+              color.withValues(alpha: 0),
+            ],
+          ),
         ),
       ),
-    ),
-  );
+    );
+  }
 }

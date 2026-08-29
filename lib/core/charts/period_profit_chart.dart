@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 
+import '../../features/accounts/presentation/platform_logo.dart';
 import '../../features/shifts/domain/period_analytics.dart';
 import '../format/money.dart';
 import '../theme/app_spacing.dart';
@@ -253,19 +254,25 @@ class _PeriodProfitChartState extends State<PeriodProfitChart> {
                       minWidth: 0,
                       maxWidth: 40,
                       alignment: Alignment.center,
-                      child: Text(
-                        i % widget.labelStride == 0
-                            ? widget.buckets[i].label
-                            : '',
-                        textAlign: TextAlign.center,
-                        maxLines: 1,
-                        style: textTheme.labelSmall?.copyWith(
-                          color: i == selected
-                              ? colors.onSurface
-                              : colors.onSurfaceVariant,
-                          fontWeight: i == selected ? FontWeight.w800 : null,
-                        ),
-                      ),
+                      child: i % widget.labelStride == 0
+                          ? (widget.buckets[i].platform != null
+                              ? PlatformLogo(
+                                  platform: widget.buckets[i].platform!,
+                                  size: 14,
+                                )
+                              : Text(
+                                  widget.buckets[i].label,
+                                  textAlign: TextAlign.center,
+                                  maxLines: 1,
+                                  style: textTheme.labelSmall?.copyWith(
+                                    color: i == selected
+                                        ? colors.onSurface
+                                        : colors.onSurfaceVariant,
+                                    fontWeight:
+                                        i == selected ? FontWeight.w800 : null,
+                                  ),
+                                ))
+                          : const SizedBox.shrink(),
                     ),
                   ),
               ],

@@ -4,13 +4,14 @@ import 'package:flutter/material.dart';
 
 import 'core/config/backend_config.dart';
 import 'core/persistence/app_store.dart';
+import 'core/presentation/splash_screen.dart';
 import 'core/sync/sync_service.dart';
 import 'core/theme/app_theme.dart';
 import 'features/accounts/application/earnings_repository.dart';
 import 'features/admin/application/admin_repository.dart';
 import 'features/auth/application/auth_gateway.dart';
 import 'features/auth/domain/auth_user.dart';
-import 'features/auth/presentation/sign_in_screen.dart';
+import 'features/auth/presentation/auth_flow_screen.dart';
 import 'features/driving/application/driving_session_controller.dart';
 import 'features/driving/application/location_tracker.dart';
 import 'features/driving/domain/driving_session.dart';
@@ -70,6 +71,7 @@ class _DriverWealthAppState extends State<DriverWealthApp> {
   late final EarningsRepository _earnings;
   DrivingSessionController? _driving;
   var _loaded = false;
+  String _loadingMessage = 'Initializing';
   SyncStatus? _syncStatus;
   var _syncing = false;
   String? _driverName;
@@ -91,6 +93,13 @@ class _DriverWealthAppState extends State<DriverWealthApp> {
   AuthGateway? _auth;
   AuthUser? _user;
   StreamSubscription<AuthUser?>? _authChanges;
+
+  /// The name given on the signup screen, held until the new account has
+  /// finished its first sync. Applied then rather than immediately because
+  /// [_syncRecords] only restores an existing account's records while
+  /// [_driverName] is still null — writing the name first would make a
+  /// returning driver look like a brand-new one and skip the restore.
+  String? _pendingSignUpName;
   AdminRepository? _admin;
   var _adminAccess = false;
 
@@ -136,7 +145,7 @@ class _DriverWealthAppState extends State<DriverWealthApp> {
       // Signing in is the moment a device's records acquire an owner. Anything
       // already here was entered before there was an account to attach it to,
       // so it is pushed rather than left stranded.
-      if (signedIn) unawaited(_syncRecords(uploadEverything: true));
+      if (signedIn) unawaited(_adoptSignedInAccount());
     });
     _earnings =
         widget.earningsRepository ??
@@ -149,6 +158,12 @@ class _DriverWealthAppState extends State<DriverWealthApp> {
       _createDrivingController();
     } else {
       unawaited(_load());
+    }
+  }
+
+  void _updateLoadingMessage(String message) {
+    if (mounted) {
+      setState(() => _loadingMessage = message);
     }
   }
 
@@ -191,13 +206,16 @@ class _DriverWealthAppState extends State<DriverWealthApp> {
       darkTheme: AppTheme.dark,
       themeMode: _themeMode,
       home: !_loaded
-          ? const _LoadingScreen()
+          ? SplashScreen(message: _loadingMessage)
           // Sign-in comes before onboarding: the name asked for there belongs
           // to an account, not to a device. A stored session is restored
           // without a network round trip, so this does not block offline use
           // once the driver has signed in.
           : (_auth != null && _user == null)
-          ? SignInScreen(gateway: _auth!)
+          ? AuthFlowScreen(
+              gateway: _auth!,
+              onSignUpName: (name) => _pendingSignUpName = name,
+            )
           : _driverName == null
           ? OnboardingScreen(onComplete: _completeOnboarding)
           : AppShell(
@@ -240,7 +258,13 @@ class _DriverWealthAppState extends State<DriverWealthApp> {
   }
 
   Future<void> _load() async {
+    _updateLoadingMessage('Loading your data');
     final snapshot = await _store.load();
+    if (!mounted) return;
+
+    // Show splash screen for at least 3 seconds
+    await Future.delayed(const Duration(seconds: 3));
+
     if (!mounted) return;
     setState(() {
       _driverName = snapshot.driverName;
@@ -266,9 +290,11 @@ class _DriverWealthAppState extends State<DriverWealthApp> {
       _loaded = true;
     });
     _createDrivingController();
+    _updateLoadingMessage('Syncing with your account');
     // A snapshot that predates sync has no cursor. Treat that first run as a
     // full upload so records entered before accounts existed are not stranded.
     await _syncRecords(uploadEverything: snapshot.syncCursor == null);
+    _updateLoadingMessage('Fetching earnings data');
     await refreshImportedEarnings();
   }
 
@@ -402,6 +428,27 @@ class _DriverWealthAppState extends State<DriverWealthApp> {
     _saveAndSync();
   }
 
+  /// Attaches this device's records to the account that just signed in, then
+  /// adopts a name given at signup if the account did not already have one.
+  ///
+  /// The order is the point. The sync runs first so an existing account can
+  /// restore the name, goal and settings it already had; only an account that
+  /// comes back with nothing takes the one typed on the signup screen. Without
+  /// that, signing up would be indistinguishable from signing in on a fresh
+  /// phone, and the restore would be skipped.
+  Future<void> _adoptSignedInAccount() async {
+    await _syncRecords(uploadEverything: true);
+    final pending = _pendingSignUpName;
+    _pendingSignUpName = null;
+    if (!mounted || pending == null || pending.isEmpty) return;
+    if (_driverName != null) return;
+    setState(() {
+      _driverName = pending;
+      _dirtyPreferences = true;
+    });
+    _saveAndSync();
+  }
+
   void _addShift(Shift shift) {
     if (_shifts.any((savedShift) => savedShift.id == shift.id)) {
       // Already saved — but a resumed draft still has to be cleared, or the
@@ -457,6 +504,9 @@ class _DriverWealthAppState extends State<DriverWealthApp> {
       _deletedShiftIds.clear();
       _dirtyPreferences = false;
       _adminAccess = false;
+      // A name typed on the signup screen must not survive to be adopted by
+      // whoever signs in on this phone next.
+      _pendingSignUpName = null;
     });
     _save();
   }
@@ -664,10 +714,3 @@ class _DriverWealthAppState extends State<DriverWealthApp> {
   }
 }
 
-class _LoadingScreen extends StatelessWidget {
-  const _LoadingScreen();
-
-  @override
-  Widget build(BuildContext context) =>
-      const Scaffold(body: Center(child: CircularProgressIndicator()));
-}

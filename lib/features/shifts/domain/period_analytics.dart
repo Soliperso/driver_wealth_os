@@ -1,5 +1,6 @@
 import 'package:intl/intl.dart';
 
+import '../../accounts/domain/work_platform.dart';
 import 'shift.dart';
 import 'shift_summary.dart';
 
@@ -155,6 +156,7 @@ class ProfitBucket {
     required this.label,
     required this.detailLabel,
     required this.summary,
+    this.platform,
   });
 
   final DateTime start;
@@ -166,6 +168,8 @@ class ProfitBucket {
   final String detailLabel;
 
   final ShiftSummary summary;
+
+  final WorkPlatform? platform;
 
   double get netProfit => summary.netProfit;
   int get shiftCount => summary.shiftCount;
@@ -284,6 +288,7 @@ abstract final class PeriodAnalytics {
             '${shift.platform.displayName} · '
             '${DateFormat('h:mm a', _locale).format(shift.completedAt)}',
         summary: ShiftSummary.from([shift]),
+        platform: shift.platform,
       ),
   ];
 

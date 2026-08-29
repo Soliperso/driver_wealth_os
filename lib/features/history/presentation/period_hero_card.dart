@@ -90,7 +90,7 @@ class PeriodHeroCard extends StatelessWidget {
           // The stepper's icon buttons carry their own generous tap padding, so
           // a full gap under them opened a band of dead space above the figure
           // the card exists to show.
-          Space.gapSm,
+          Space.gapMd,
           if (performance.isEmpty)
             _EmptyPeriod(range: range)
           else ...[

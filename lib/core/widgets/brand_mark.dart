@@ -1,80 +1,32 @@
 import 'package:flutter/material.dart';
 
-import '../theme/app_colors.dart';
-
+/// The app icon, shown inside the app.
+///
+/// This renders the same artwork the launcher icon is generated from rather
+/// than a hand-drawn approximation of it. The previous version painted its own
+/// glyph in code, which silently stopped matching the moment the icon artwork
+/// was replaced — the mark on the onboarding screen and the mark on the home
+/// screen were two different logos.
+///
+/// The artwork carries its own rounded tile and transparent corners, so there
+/// is deliberately no clip or decoration here: anything added would either
+/// fight the tile or cut into it.
 class BrandMark extends StatelessWidget {
   const BrandMark({super.key, this.size = 72});
 
   final double size;
 
   @override
-  Widget build(BuildContext context) {
-    final radius = size * .3;
-    return Semantics(
-      label: 'Driver Wealth OS logo',
-      image: true,
-      child: Align(
-        widthFactor: 1,
-        heightFactor: 1,
-        child: Container(
-          width: size,
-          height: size,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(radius),
-            gradient: const LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [AppColors.brand, AppColors.brandDeep],
-            ),
-          ),
-          child: CustomPaint(painter: BrandGlyphPainter()),
-        ),
-      ),
-    );
-  }
-}
-
-/// The glyph itself, without the tile behind it.
-///
-/// Public so the launcher-icon generator paints the same marks the app shows.
-/// A separately drawn icon asset would drift from this the first time either
-/// changed.
-class BrandGlyphPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final line = Paint()
-      ..color = Colors.white
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = size.width * .075
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round;
-
-    final road = Path()
-      ..moveTo(size.width * .31, size.height * .72)
-      ..cubicTo(
-        size.width * .35,
-        size.height * .53,
-        size.width * .41,
-        size.height * .36,
-        size.width * .50,
-        size.height * .25,
-      );
-    canvas.drawPath(road, line..color = Colors.white.withValues(alpha: .62));
-
-    final growth = Path()
-      ..moveTo(size.width * .36, size.height * .67)
-      ..lineTo(size.width * .52, size.height * .52)
-      ..lineTo(size.width * .64, size.height * .58)
-      ..lineTo(size.width * .73, size.height * .36);
-    canvas.drawPath(growth, line..color = Colors.white);
-
-    final arrow = Path()
-      ..moveTo(size.width * .60, size.height * .38)
-      ..lineTo(size.width * .75, size.height * .32)
-      ..lineTo(size.width * .75, size.height * .48);
-    canvas.drawPath(arrow, line);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  Widget build(BuildContext context) => Semantics(
+    label: 'Driver Wealth OS logo',
+    image: true,
+    child: Image.asset(
+      'assets/icon/app_mark.png',
+      width: size,
+      height: size,
+      // The source is 256px square and is drawn far smaller than that, so the
+      // downscale is what anyone actually sees.
+      filterQuality: FilterQuality.medium,
+    ),
+  );
 }
