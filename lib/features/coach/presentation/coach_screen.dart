@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/format/money.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/animated_money.dart';
+import '../../../core/widgets/empty_state_card.dart';
 import '../../../core/widgets/learning_progress.dart';
 import '../../../core/widgets/metric_panel.dart';
 import '../../../core/widgets/page_frame.dart';
@@ -587,55 +588,19 @@ class _EmptyCoach extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final add = onAddShift;
-    return LayoutBuilder(
-      builder: (context, constraints) => SingleChildScrollView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        child: ConstrainedBox(
-          constraints: BoxConstraints(minHeight: constraints.maxHeight),
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 420),
-              child: GlassSurface(
-                key: const ValueKey('coach-empty'),
-                padding: const EdgeInsets.all(Space.xl),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // The circle is a fixed 36; at 26 the glyph filled it and
-                    // read as a different component from every other [SoftIcon]
-                    // in the app.
-                    SoftIcon(Icons.auto_awesome_rounded, size: 20),
-                    const SizedBox(height: Space.lg),
-                    Text(
-                      'Nothing to coach yet',
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: Space.xs),
-                    Text(
-                      'Coach needs earnings, hours, distance and costs before '
-                      'it can compare which of your sessions actually paid.',
-                      textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                    if (add != null) ...[
-                      const SizedBox(height: Space.xl),
-                      FilledButton.icon(
-                        onPressed: add,
-                        icon: const Icon(Icons.add_rounded, size: 18),
-                        label: const Text('Add first session'),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
+    return EmptyStateCard(
+      key: const ValueKey('coach-empty'),
+      icon: Icons.auto_awesome_rounded,
+      title: 'Nothing to coach yet',
+      message: 'Coach needs earnings, hours, distance and costs before '
+          'it can compare which of your sessions actually paid.',
+      action: add == null
+          ? null
+          : OutlinedButton.icon(
+              onPressed: add,
+              icon: const Icon(Icons.add_rounded, size: 18),
+              label: const Text('Add first session'),
             ),
-          ),
-        ),
-      ),
     );
   }
 }

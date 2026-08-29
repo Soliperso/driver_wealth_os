@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/format/money.dart';
 import '../../../core/theme/app_spacing.dart';
+import '../../../core/widgets/empty_state_card.dart';
 import '../../../core/widgets/page_frame.dart';
 import '../../../core/widgets/soft_surfaces.dart';
 import '../../accounts/presentation/platform_logo.dart';
@@ -428,45 +429,16 @@ class _EmptyHistory extends StatelessWidget {
   final VoidCallback onAddShift;
 
   @override
-  Widget build(BuildContext context) => SizedBox(
-    height: MediaQuery.sizeOf(context).height - 210,
-    width: double.infinity,
-    child: GlassSurface(
-      padding: const EdgeInsets.all(28),
-      child: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.history_rounded,
-              size: 60,
-              color: Theme.of(context).colorScheme.primary,
-            ),
-            const SizedBox(height: 20),
-            Text(
-              'No sessions yet',
-              style: Theme.of(
-                context,
-              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Your completed sessions will appear here with their true-profit details.',
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-                height: 1.45,
-              ),
-            ),
-            const SizedBox(height: 22),
-            FilledButton.icon(
-              onPressed: onAddShift,
-              icon: const Icon(Icons.add_rounded, size: 18),
-              label: const Text('Add first session'),
-            ),
-          ],
-        ),
-      ),
+  Widget build(BuildContext context) => EmptyStateCard(
+    icon: Icons.history_rounded,
+    title: 'No sessions yet',
+    message:
+        'Your completed sessions will appear here with their true-profit '
+        'details.',
+    action: OutlinedButton.icon(
+      onPressed: onAddShift,
+      icon: const Icon(Icons.add_rounded, size: 18),
+      label: const Text('Add first session'),
     ),
   );
 }

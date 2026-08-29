@@ -153,17 +153,21 @@ class GlassSurface extends StatelessWidget {
 }
 
 class SoftIcon extends StatelessWidget {
-  const SoftIcon(this.icon, {super.key, this.size = 20});
+  const SoftIcon(this.icon, {super.key, this.size = 20, this.circleSize = 36});
 
   final IconData icon;
   final double size;
+
+  /// Diameter of the tinted circle. 36 is the inline size used beside a title;
+  /// empty states hand it a larger circle so the glyph can carry the card.
+  final double circleSize;
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     return Container(
-      width: 36,
-      height: 36,
+      width: circleSize,
+      height: circleSize,
       alignment: Alignment.center,
       decoration: BoxDecoration(
         color: colors.primary.withValues(alpha: .12),
