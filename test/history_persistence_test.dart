@@ -27,11 +27,7 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     final store = SharedPreferencesAppStore();
     await store.save(
-      AppSnapshot(
-        driverName: 'Ahmed',
-        dailyGoal: 325,
-        shifts: [_shift()],
-      ),
+      AppSnapshot(driverName: 'Ahmed', dailyGoal: 325, shifts: [_shift()]),
     );
 
     final restored = await store.load();

@@ -221,10 +221,8 @@ class _StillGateway implements AuthGateway {
   Stream<AuthUser?> get changes => const Stream.empty();
 
   @override
-  Future<AuthUser> signIn({
-    required String email,
-    required String password,
-  }) => Completer<AuthUser>().future;
+  Future<AuthUser> signIn({required String email, required String password}) =>
+      Completer<AuthUser>().future;
 
   @override
   Future<AuthUser> signUp({
@@ -237,10 +235,11 @@ class _StillGateway implements AuthGateway {
   Future<void> sendCode(String email) => Completer<void>().future;
 
   @override
-  Future<AuthUser> verifyCode({
-    required String email,
-    required String code,
-  }) => Completer<AuthUser>().future;
+  Future<void> deleteAccount() => Completer<void>().future;
+
+  @override
+  Future<AuthUser> verifyCode({required String email, required String code}) =>
+      Completer<AuthUser>().future;
 
   @override
   Future<void> sendPasswordReset(String email) async {

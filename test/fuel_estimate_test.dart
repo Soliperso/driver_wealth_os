@@ -1,6 +1,5 @@
 import 'package:driver_wealth_os/features/accounts/domain/work_platform.dart';
 import 'package:driver_wealth_os/features/settings/domain/driving_costs.dart';
-import 'package:driver_wealth_os/features/settings/domain/measurement_units.dart';
 import 'package:driver_wealth_os/features/shifts/domain/shift.dart';
 import 'package:driver_wealth_os/features/shifts/presentation/add_shift_screen.dart';
 import 'package:flutter/material.dart';
@@ -172,28 +171,25 @@ void main() {
     expect(saved!.netProfit, 150);
   });
 
-  testWidgets('a kilometre driver types km and the shift stores miles', (
+  testWidgets('the form names miles, and stores exactly what was typed', (
     tester,
   ) async {
     Shift? saved;
-    const metric = MeasurementUnits(
-      distance: DistanceUnit.kilometres,
-      currency: SupportedCurrency.gbp,
-    );
 
     await tester.pumpWidget(
       MaterialApp(
         home: AddShiftScreen(
           onSave: (shift) => saved = shift,
           drivingCosts: costs,
-          units: metric,
         ),
       ),
     );
 
-    // The field names the driver's own unit, so the number in it is km.
-    expect(find.text('Kilometres driven'), findsOneWidget);
-    expect(find.text('Vehicle wear per kilometre'), findsOneWidget);
+    // The app is miles everywhere, so the field says so and the number in it
+    // is the number that gets stored — there is no conversion step to get
+    // wrong.
+    expect(find.text('Miles driven'), findsOneWidget);
+    expect(find.text('Vehicle wear per mile'), findsOneWidget);
 
     await tester.enterText(
       find.widgetWithText(TextFormField, 'Gross earnings'),
@@ -204,8 +200,8 @@ void main() {
       '5',
     );
     await tester.enterText(
-      find.widgetWithText(TextFormField, 'Kilometres driven'),
-      '160.9344',
+      find.widgetWithText(TextFormField, 'Miles driven'),
+      '100',
     );
     await tester.pump();
 
@@ -217,11 +213,8 @@ void main() {
     await tester.tap(find.text('Save to Today'));
     await tester.pumpAndSettle();
 
-    // 160.9344 km is exactly 100 miles. Storing the typed number directly
-    // would have recorded a 161-mile shift and overstated every cost with it.
-    expect(saved!.miles, closeTo(100, .0001));
-    // The wear rate round-trips too: $0.30/mi shown as £0.1864/km, typed back.
-    expect(saved!.vehicleCostPerMile, closeTo(.30, .001));
+    expect(saved!.miles, 100);
+    expect(saved!.vehicleCostPerMile, closeTo(.30, .0001));
     expect(saved!.directExpenses, closeTo(20, .01));
   });
 

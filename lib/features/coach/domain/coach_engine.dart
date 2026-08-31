@@ -109,8 +109,7 @@ class CoachEngine {
         priority: starter,
         weekly: CoachInsight(
           title: 'Weekly performance',
-          message:
-              'Complete a session to start your first weekly comparison.',
+          message: 'Complete a session to start your first weekly comparison.',
           kind: CoachInsightKind.weekly,
           isReady: false,
           progress: (done: 0, needed: 1, caption: '0 of 1 sessions this week'),
@@ -129,11 +128,7 @@ class CoachEngine {
               'Review earnings, hours and costs on completed sessions before Coach flags a weak one.',
           kind: CoachInsightKind.leak,
           isReady: false,
-          progress: (
-            done: 0,
-            needed: 3,
-            caption: '0 of 3 reviewed sessions',
-          ),
+          progress: (done: 0, needed: 3, caption: '0 of 3 reviewed sessions'),
         ),
         cost: CoachInsight(
           title: 'Cost insight',
@@ -571,13 +566,10 @@ class CoachEngine {
       byPlatform.putIfAbsent(shift.platform, () => []).add(shift);
     }
     if (byPlatform.length >= 2) {
-      final ranked =
-          [
-            for (final entry in byPlatform.entries)
-              (platform: entry.key, summary: ShiftSummary.from(entry.value)),
-          ]..sort(
-            (a, b) => b.summary.netPerHour.compareTo(a.summary.netPerHour),
-          );
+      final ranked = [
+        for (final entry in byPlatform.entries)
+          (platform: entry.key, summary: ShiftSummary.from(entry.value)),
+      ]..sort((a, b) => b.summary.netPerHour.compareTo(a.summary.netPerHour));
       final best = ranked.first;
       final worst = ranked.last;
       questions.add(

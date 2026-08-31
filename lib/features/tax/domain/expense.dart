@@ -15,15 +15,27 @@ library;
 /// form — or handed to an accountant — without a second pass.
 enum ExpenseCategory {
   fuel('Fuel', 'Car and truck expenses', isVehicleCost: true),
-  maintenance('Maintenance & repairs', 'Car and truck expenses',
-      isVehicleCost: true),
+  maintenance(
+    'Maintenance & repairs',
+    'Car and truck expenses',
+    isVehicleCost: true,
+  ),
   insurance('Vehicle insurance', 'Car and truck expenses', isVehicleCost: true),
-  vehiclePayment('Car payment or lease', 'Car and truck expenses',
-      isVehicleCost: true),
-  registration('Registration & licensing', 'Taxes and licenses',
-      isVehicleCost: true),
-  tollsAndParking('Tolls & parking', 'Car and truck expenses',
-      isVehicleCost: true),
+  vehiclePayment(
+    'Car payment or lease',
+    'Car and truck expenses',
+    isVehicleCost: true,
+  ),
+  registration(
+    'Registration & licensing',
+    'Taxes and licenses',
+    isVehicleCost: true,
+  ),
+  tollsAndParking(
+    'Tolls & parking',
+    'Car and truck expenses',
+    isVehicleCost: true,
+  ),
 
   // Everything below is claimable alongside either vehicle method.
   phone('Phone & data', 'Utilities'),

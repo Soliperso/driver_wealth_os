@@ -20,11 +20,7 @@ import '../domain/password_policy.dart';
 /// used to create silently — meant a reinstall, a new phone, or two weeks away
 /// from the app destroyed the driver's history with no way to recover it.
 class AuthFlowScreen extends StatefulWidget {
-  const AuthFlowScreen({
-    super.key,
-    required this.gateway,
-    this.onSignUpName,
-  });
+  const AuthFlowScreen({super.key, required this.gateway, this.onSignUpName});
 
   final AuthGateway gateway;
 
@@ -131,7 +127,8 @@ class _AuthFlowScreenState extends State<AuthFlowScreen> {
         // Deliberately not the signup policy: an older account may predate the
         // current rules, and refusing to even attempt the sign-in would lock
         // its owner out over a rule they never agreed to.
-        validator: (value) => (value ?? '').isEmpty ? 'Enter your password' : null,
+        validator: (value) =>
+            (value ?? '').isEmpty ? 'Enter your password' : null,
         onSubmitted: _signIn,
       ),
       _errorRow(),

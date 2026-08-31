@@ -2,7 +2,6 @@ import 'package:driver_wealth_os/core/widgets/learning_progress.dart';
 import 'package:driver_wealth_os/features/accounts/domain/work_platform.dart';
 import 'package:driver_wealth_os/features/coach/presentation/coach_screen.dart';
 import 'package:driver_wealth_os/features/settings/domain/driver_preferences.dart';
-import 'package:driver_wealth_os/features/settings/domain/measurement_units.dart';
 import 'package:driver_wealth_os/features/shifts/domain/shift.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -87,9 +86,11 @@ void main() {
     },
   );
 
-  testWidgets('money is grouped in the driver’s own currency', (tester) async {
+  testWidgets('money is grouped the way every other screen groups it', (
+    tester,
+  ) async {
     // The regression this covers: Coach hand-rolled `symbol + toStringAsFixed`,
-    // so it printed £1234.56 while every other screen printed £1,234.56.
+    // so it printed $1234.56 while every other screen printed $1,234.56.
     final now = DateTime.now();
     await _pump(
       tester,
@@ -107,15 +108,11 @@ void main() {
           completedAt: DateTime(now.year, now.month, now.day, 12),
         ),
       ],
-      preferences: const DriverPreferences(
-        driverName: 'Ahmed',
-        dailyGoal: 250,
-        units: MeasurementUnits(currency: SupportedCurrency.gbp),
-      ),
+      preferences: const DriverPreferences(driverName: 'Ahmed', dailyGoal: 250),
     );
 
-    expect(find.textContaining('£1,234.56'), findsWidgets);
-    expect(find.textContaining('£1234.56'), findsNothing);
+    expect(find.textContaining(r'$1,234.56'), findsWidgets);
+    expect(find.textContaining(r'$1234.56'), findsNothing);
   });
 
   testWidgets('pull to refresh asks for fresh earnings', (tester) async {

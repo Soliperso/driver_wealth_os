@@ -2,11 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../core/format/money.dart';
-import '../../../core/persistence/app_store.dart';
 import '../../../core/widgets/page_frame.dart';
 import '../../../core/widgets/soft_surfaces.dart';
 import '../../accounts/domain/work_platform.dart';
 import '../../accounts/presentation/platform_logo.dart';
+import '../../settings/domain/driving_costs.dart';
+import '../../settings/domain/measurement_units.dart';
 import '../domain/shift.dart';
 import 'shift_result_screen.dart';
 
@@ -15,7 +16,8 @@ class AddShiftScreen extends StatefulWidget {
     super.key,
     required this.onSave,
     this.initialShift,
-    this.defaultVehicleCostPerMile = AppSnapshot.defaultVehicleCostPerMile,
+    this.drivingCosts = const DrivingCosts(),
+    this.units = const MeasurementUnits(),
     this.isNewFromSession = false,
   });
 
@@ -27,9 +29,17 @@ class AddShiftScreen extends StatefulWidget {
   /// than "edit a saved session".
   final bool isNewFromSession;
 
-  /// Seeds the rate field for a new shift. Editing an existing shift uses that
-  /// shift's own rate instead, so a past shift never silently recalculates.
-  final double defaultVehicleCostPerMile;
+  /// What a mile costs this driver — seeds the rate field for a new shift, and
+  /// prices the fuel burned over whatever mileage is entered.
+  ///
+  /// Editing an existing shift uses that shift's own rate instead, so a past
+  /// shift never silently recalculates against today's settings.
+  final DrivingCosts drivingCosts;
+
+  /// The driver's own distance unit and currency. Every field on this form is
+  /// read and written in these; only the [Shift] that comes out is normalised
+  /// back to miles.
+  final MeasurementUnits units;
 
   @override
   State<AddShiftScreen> createState() => _AddShiftScreenState();
@@ -59,6 +69,19 @@ class _AddShiftScreenState extends State<AddShiftScreen> {
   /// an initial shift attached.
   bool get _editing => widget.initialShift != null && !widget.isNewFromSession;
 
+  /// True once the driver has put their own figure in the costs field.
+  ///
+  /// The estimate is a convenience, not a correction: a real receipt — fuel
+  /// plus a toll, say — must survive the driver going back to fix their
+  /// mileage, which would otherwise recompute the field out from under them.
+  var _expensesEdited = false;
+
+  /// The last value this screen wrote into [_expenses] itself, so the listener
+  /// can tell its own write from the driver's typing.
+  String _autoFilledExpenses = '';
+
+  MeasurementUnits get _units => widget.units;
+
   @override
   void initState() {
     super.initState();
@@ -84,13 +107,72 @@ class _AddShiftScreenState extends State<AddShiftScreen> {
     );
     _vehicleRate = TextEditingController(
       text: _initialNumber(
-        shift?.vehicleCostPerMile ?? widget.defaultVehicleCostPerMile,
+        shift?.vehicleCostPerMile ?? widget.drivingCosts.vehicleCostPerMile,
       ),
     );
+
+    // A saved shift's costs are history and are never re-estimated. A tracked
+    // one has real mileage and no costs yet, so it is priced immediately —
+    // the driver confirms or corrects a figure rather than starting at zero.
+    if (_editing || (shift?.directExpenses ?? 0) > 0) {
+      _expensesEdited = true;
+    } else if (widget.isNewFromSession) {
+      _applyFuelEstimate();
+    }
+
+    _miles.addListener(_applyFuelEstimate);
+    _expenses.addListener(_noticeExpenseEdit);
   }
+
+  void _noticeExpenseEdit() {
+    if (_expenses.text != _autoFilledExpenses) _expensesEdited = true;
+  }
+
+  /// Prices the fuel burned over whatever is currently in the mileage field.
+  void _applyFuelEstimate() {
+    if (_expensesEdited) return;
+    final estimate = widget.drivingCosts.estimatedFuel(_enteredMiles());
+    final text = estimate <= 0 ? '0' : estimate.toStringAsFixed(2);
+    if (_expenses.text == text) return;
+    // Set before the write: the listener fires synchronously on assignment and
+    // would otherwise read this as the driver typing.
+    _autoFilledExpenses = text;
+    _expenses.text = text;
+    if (mounted) setState(() {});
+  }
+
+  /// Whatever is currently in the mileage field, or zero if it is not a usable
+  /// number yet. Typed in miles and stored in miles, so nothing is converted.
+  double _enteredMiles() {
+    final typed = double.tryParse(_miles.text);
+    if (typed == null || !typed.isFinite || typed <= 0) return 0;
+    return typed;
+  }
+
+  /// Non-null only when there is a fuel figure worth explaining. A driver who
+  /// has not set an economy gets no estimate rather than a confident zero.
+  String? get _fuelEstimateHint {
+    final costs = widget.drivingCosts;
+    if (costs.fuelCostPerMile <= 0) return null;
+    final miles = _enteredMiles();
+    if (miles <= 0) return null;
+    // Economy is stored as miles per gallon (or per kWh for an EV) and shown
+    // exactly that way, so only the unit's name changes with the energy source.
+    final electric = costs.energySource == EnergySource.electric;
+    final economyUnit = electric ? 'kWh' : _units.volume.symbol;
+    return '${_units.cents(costs.estimatedFuel(miles))} estimated fuel at '
+        '${_plain(costs.fuelEfficiency)} '
+        '${_units.distance.symbol}/$economyUnit at '
+        '${_units.cents(costs.fuelPrice)}/$economyUnit';
+  }
+
+  static String _plain(double value) =>
+      value.toStringAsFixed(value.truncateToDouble() == value ? 0 : 2);
 
   @override
   void dispose() {
+    _miles.removeListener(_applyFuelEstimate);
+    _expenses.removeListener(_noticeExpenseEdit);
     for (final controller in [
       _hours,
       _miles,
@@ -140,7 +222,7 @@ class _AddShiftScreenState extends State<AddShiftScreen> {
             ),
             if (widget.isNewFromSession) ...[
               const SizedBox(height: 20),
-              _TrackedSummary(shift: widget.initialShift!),
+              _TrackedSummary(shift: widget.initialShift!, units: _units),
             ],
             const SizedBox(height: 26),
             GlassSurface(
@@ -214,7 +296,7 @@ class _AddShiftScreenState extends State<AddShiftScreen> {
                         );
                         final milesField = _numberField(
                           _miles,
-                          'Miles driven',
+                          '${_units.distance.label} driven',
                           Icons.route_rounded,
                         );
                         if (stackFields) {
@@ -240,11 +322,12 @@ class _AddShiftScreenState extends State<AddShiftScreen> {
                       _expenses,
                       'Fuel, tolls & parking',
                       Icons.receipt_long_outlined,
+                      helperText: _fuelEstimateHint,
                     ),
                     const SizedBox(height: 14),
                     _numberField(
                       _vehicleRate,
-                      'Vehicle wear per mile',
+                      'Vehicle wear per ${_units.distance.singular}',
                       Icons.directions_car_outlined,
                       helperText:
                           'Maintenance, tires and depreciation only. Fuel is entered above.',
@@ -363,7 +446,7 @@ class _AddShiftScreenState extends State<AddShiftScreen> {
       if (_lines.length > 1) ...[
         const SizedBox(height: 4),
         Text(
-          'Total gross ${Money.cents(_enteredGross())} across '
+          'Total gross ${_units.cents(_enteredGross())} across '
           '${_lines.length} apps. Your hours, miles and costs below are '
           'counted once for the whole session.',
           key: const ValueKey('earnings-total'),
@@ -513,6 +596,7 @@ class _AddShiftScreenState extends State<AddShiftScreen> {
       MaterialPageRoute(
         builder: (_) => ShiftResultScreen(
           shift: shift,
+          units: _units,
           saveLabel: _editing ? 'Save changes' : 'Save to Today',
           onSave: () => widget.onSave(shift),
         ),
@@ -520,9 +604,22 @@ class _AddShiftScreenState extends State<AddShiftScreen> {
     );
   }
 
-  static String _initialNumber(double? value, {String fallback = ''}) {
+  static String _initialNumber(
+    double? value, {
+    String fallback = '',
+    int decimals = 2,
+  }) {
     if (value == null) return fallback;
-    return value.toStringAsFixed(value.truncateToDouble() == value ? 0 : 2);
+    if (value.truncateToDouble() == value) return value.toStringAsFixed(0);
+    // Trailing zeros make a rate field look like it demands four digits.
+    // Trimmed by hand rather than with a backreference: `replaceFirst` takes
+    // its replacement literally, so `$1` would be written into the field.
+    var text = value.toStringAsFixed(decimals);
+    if (!text.contains('.')) return text;
+    while (text.endsWith('0')) {
+      text = text.substring(0, text.length - 1);
+    }
+    return text.endsWith('.') ? text.substring(0, text.length - 1) : text;
   }
 
   static String _formatDate(DateTime date) {
@@ -574,9 +671,10 @@ class _EarningsLine {
 }
 
 class _TrackedSummary extends StatelessWidget {
-  const _TrackedSummary({required this.shift});
+  const _TrackedSummary({required this.shift, required this.units});
 
   final Shift shift;
+  final MeasurementUnits units;
 
   @override
   Widget build(BuildContext context) {
@@ -600,8 +698,8 @@ class _TrackedSummary extends StatelessWidget {
           ),
           Expanded(
             child: _TrackedMetric(
-              label: 'Tracked miles',
-              value: Money.number(shift.miles),
+              label: 'Tracked ${units.distance.label.toLowerCase()}',
+              value: units.distanceLabel(shift.miles),
             ),
           ),
         ],

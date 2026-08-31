@@ -6,14 +6,23 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../shifts/domain/shift.dart';
+import '../../tax/domain/expense.dart';
 import '../domain/measurement_units.dart';
 
-/// Writes a driver's history out as a spreadsheet they can keep.
+/// Writes a driver's records out as a spreadsheet they can keep.
 ///
 /// The history is the driver's own record of their year, and at tax time it has
 /// to be able to leave the app as a file — not as a screenshot of a chart. CSV
 /// rather than a bespoke format because the destination is always someone
 /// else's spreadsheet or accountant.
+///
+/// Sessions and standalone expenses go in **one** file, distinguished by a
+/// leading `Record` column. A driver's costs are not a separate story from their
+/// earnings — the year only balances when both are in front of you — and one
+/// attachment is one thing to forward to an accountant. The two record types
+/// fill disjoint blocks of columns and leave the other side empty, so no column
+/// ever holds two different kinds of number and every one of them stays
+/// summable on its own.
 ///
 /// Distances are written in the driver's chosen unit and the column is named
 /// accordingly, so a kilometre-based driver never has to remember that the
@@ -25,8 +34,16 @@ final class HistoryExport {
 
   final MeasurementUnits units;
 
-  /// Newest first, matching the order the driver sees in History.
-  String toCsv(List<Shift> shifts) {
+  /// One ledger, newest first, matching the order the driver sees in History.
+  ///
+  /// [year] restricts both record types to a single tax year — what the Taxes
+  /// tab exports, since a filing covers one year and nothing else. Omitted, the
+  /// whole history comes out, which is what a personal backup wants.
+  String toCsv(
+    List<Shift> shifts, {
+    List<Expense> expenses = const [],
+    int? year,
+  }) {
     final date = DateFormat('yyyy-MM-dd');
     final time = DateFormat('HH:mm');
     final code = units.currency.code;
@@ -34,6 +51,8 @@ final class HistoryExport {
 
     final rows = <List<String>>[
       [
+        // First column so a spreadsheet can filter on it before anything else.
+        'Record',
         'Date',
         'Time',
         'Apps',
@@ -47,59 +66,107 @@ final class HistoryExport {
         'Net per hour ($code)',
         'Net per $unit ($code)',
         'Keep rate (%)',
+        // The expense block. Empty on a session row.
+        'Category',
+        'Schedule C line',
+        'Vehicle cost?',
+        'Amount ($code)',
+        'Note',
         'Source',
       ],
     ];
 
-    final ordered = [...shifts]
-      ..sort((a, b) => b.completedAt.compareTo(a.completedAt));
+    // Interleaved on one date axis rather than stacked in two blocks: the file
+    // is a ledger, and a cost belongs beside the week it was incurred in.
+    final entries = <(DateTime, List<String>)>[
+      for (final shift in shifts)
+        if (year == null || shift.completedAt.year == year)
+          (shift.completedAt, _sessionRow(shift, date, time)),
+      for (final expense in expenses)
+        if (year == null || expense.occurredIn(year))
+          (expense.incurredOn, _expenseRow(expense, date)),
+    ]..sort((a, b) => b.$1.compareTo(a.$1));
 
-    for (final shift in ordered) {
-      final distance = units.distance.fromMiles(shift.miles);
-      rows.add([
-        date.format(shift.completedAt),
-        time.format(shift.completedAt),
-        // The full list, not the "+ 2 more" label: a spreadsheet has room and
-        // the driver may want to filter on it.
-        shift.platformsByEarnings.map((p) => p.displayName).join(' + '),
-        _amount(shift.gross),
-        shift.hours.toStringAsFixed(2),
-        distance.toStringAsFixed(1),
-        _amount(shift.directExpenses),
-        _amount(shift.vehicleCost),
-        _amount(shift.totalExpenses),
-        _amount(shift.netProfit),
-        _amount(shift.netPerHour),
-        // Per-distance rates are computed from the converted distance, not by
-        // converting the per-mile rate, so the column reconciles exactly with
-        // the net profit and distance columns beside it.
-        _amount(distance == 0 ? 0 : shift.netProfit / distance),
-        (shift.keepRate * 100).toStringAsFixed(1),
-        shift.source.id,
-      ]);
-    }
+    rows.addAll(entries.map((entry) => entry.$2));
 
     return rows.map((row) => row.map(escapeField).join(',')).join('\r\n');
   }
+
+  List<String> _sessionRow(Shift shift, DateFormat date, DateFormat time) => [
+    'Session',
+    date.format(shift.completedAt),
+    time.format(shift.completedAt),
+    // The full list, not the "+ 2 more" label: a spreadsheet has room and
+    // the driver may want to filter on it.
+    shift.platformsByEarnings.map((p) => p.displayName).join(' + '),
+    _amount(shift.gross),
+    shift.hours.toStringAsFixed(2),
+    shift.miles.toStringAsFixed(1),
+    _amount(shift.directExpenses),
+    _amount(shift.vehicleCost),
+    _amount(shift.totalExpenses),
+    _amount(shift.netProfit),
+    _amount(shift.netPerHour),
+    // Derived from the two columns beside it rather than from the stored
+    // rate, so the spreadsheet reconciles exactly.
+    _amount(shift.miles == 0 ? 0 : shift.netProfit / shift.miles),
+    (shift.keepRate * 100).toStringAsFixed(1),
+    // The expense block, empty for a session.
+    '', '', '', '', '',
+    shift.source.id,
+  ];
+
+  List<String> _expenseRow(Expense expense, DateFormat date) => [
+    'Expense',
+    date.format(expense.incurredOn),
+    // No time: an expense is dated, not clocked. Every session-only column
+    // stays empty rather than carrying a zero, because a zero would be added
+    // up as though the driver had earned nothing that day.
+    '', '', '', '', '', '', '', '', '', '', '', '',
+    expense.category.label,
+    expense.category.scheduleCLine,
+    // Spelled out rather than left as a bare flag: this is the column that
+    // decides whether the cost can be claimed alongside the standard mileage
+    // rate, and an accountant reading the file has no other way to tell.
+    expense.category.isVehicleCost ? 'Yes' : 'No',
+    _amount(expense.amount),
+    expense.note,
+    // Expenses are only ever hand-entered; there is no import for them.
+    'manual',
+  ];
 
   /// Writes the CSV to a temporary file and hands it to the system share sheet.
   ///
   /// Returns false when there is nothing to export, so the caller can say so
   /// rather than opening a share sheet on an empty file.
-  Future<bool> share(List<Shift> shifts, {DateTime? now}) async {
-    if (shifts.isEmpty) return false;
+  Future<bool> share(
+    List<Shift> shifts, {
+    List<Expense> expenses = const [],
+    int? year,
+    DateTime? now,
+  }) async {
+    final csv = toCsv(shifts, expenses: expenses, year: year);
+    // Checked on the rendered file rather than on the inputs, so a year with
+    // records in neither list is refused the same way an empty app is — and a
+    // driver who has only logged expenses can still export.
+    if (csv.split('\r\n').length < 2) return false;
 
-    final stamp = DateFormat('yyyy-MM-dd').format(now ?? DateTime.now());
+    final stamp =
+        year?.toString() ??
+        DateFormat('yyyy-MM-dd').format(now ?? DateTime.now());
+    final name = 'driver-wealth-$stamp.csv';
     final directory = await getTemporaryDirectory();
-    final file = File('${directory.path}/driver-wealth-$stamp.csv');
-    await file.writeAsString(toCsv(shifts), flush: true);
+    final file = File('${directory.path}/$name');
+    await file.writeAsString(csv, flush: true);
 
     try {
       await SharePlus.instance.share(
         ShareParams(
           files: [XFile(file.path, mimeType: 'text/csv')],
-          fileNameOverrides: ['driver-wealth-$stamp.csv'],
-          subject: 'Driver Wealth session history',
+          fileNameOverrides: [name],
+          subject: year == null
+              ? 'Driver Wealth records'
+              : 'Driver Wealth records — $year',
         ),
       );
     } finally {

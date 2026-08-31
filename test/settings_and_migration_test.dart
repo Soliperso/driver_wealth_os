@@ -1,7 +1,7 @@
 import 'package:driver_wealth_os/app.dart';
 import 'package:driver_wealth_os/core/persistence/app_store.dart';
-import 'package:driver_wealth_os/features/settings/domain/distance_unit.dart';
 import 'package:driver_wealth_os/features/settings/domain/driving_costs.dart';
+import 'package:driver_wealth_os/features/settings/domain/measurement_units.dart';
 import 'package:driver_wealth_os/features/shifts/domain/shift.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -77,7 +77,6 @@ void main() {
         hourlyFloor: 31,
         weekStartsOn: DateTime.sunday,
         drivingDaysPerWeek: 4,
-        distanceUnit: DistanceUnit.kilometers,
         themeMode: ThemeMode.dark,
       ).toJson(),
     );
@@ -88,8 +87,24 @@ void main() {
     expect(restored.hourlyFloor, 31);
     expect(restored.weekStartsOn, DateTime.sunday);
     expect(restored.drivingDaysPerWeek, 4);
-    expect(restored.distanceUnit, DistanceUnit.kilometers);
     expect(restored.themeMode, ThemeMode.dark);
+  });
+
+  // Both keys were written while the app briefly offered a choice. They are no
+  // longer read, and a snapshot carrying them has to load as miles and dollars
+  // rather than being rejected — every figure in it was always stored that way.
+  test('a snapshot storing a retired unit or currency still loads', () {
+    final restored = AppSnapshot.fromJson({
+      'driverName': 'Ahmed',
+      'dailyGoal': 300.0,
+      'distanceUnit': 'kilometres',
+      'currency': 'GBP',
+    });
+
+    expect(restored.driverName, 'Ahmed');
+    expect(restored.dailyGoal, 300);
+    expect(restored.units.distance, DistanceUnit.miles);
+    expect(restored.units.currency, SupportedCurrency.usd);
   });
 
   test(

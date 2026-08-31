@@ -9,8 +9,8 @@ import 'package:flutter/material.dart';
 
 import 'package:driver_wealth_os/core/theme/app_theme.dart';
 import 'package:driver_wealth_os/features/accounts/domain/work_platform.dart';
-import 'package:driver_wealth_os/features/settings/domain/distance_unit.dart';
 import 'package:driver_wealth_os/features/settings/domain/driving_costs.dart';
+import 'package:driver_wealth_os/features/settings/domain/measurement_units.dart';
 import 'package:driver_wealth_os/features/shifts/domain/shift.dart';
 import 'package:driver_wealth_os/features/today/presentation/app_shell.dart';
 
@@ -44,10 +44,14 @@ class _PreviewAppState extends State<_PreviewApp> {
             hourlyFloor: 25,
             weekStartsOn: DateTime.monday,
             drivingDaysPerWeek: 5,
-            distanceUnit: DistanceUnit.miles,
+            units: const MeasurementUnits(),
             onShiftAdded: (_) {},
             onShiftUpdated: (_) {},
             onShiftDeleted: (_) {},
+            expenses: const [],
+            onExpenseAdded: (_) {},
+            onExpenseUpdated: (_) {},
+            onExpenseDeleted: (_) {},
             onDailyGoalChanged: (_) {},
             onVehicleCostPerMileChanged: (_) {},
             onEnergySourceChanged: (_) {},
@@ -56,7 +60,6 @@ class _PreviewAppState extends State<_PreviewApp> {
             onHourlyFloorChanged: (_) {},
             onWeekStartsOnChanged: (_) {},
             onDrivingDaysPerWeekChanged: (_) {},
-            onDistanceUnitChanged: (_) {},
             onDriverNameChanged: (_) {},
             themeMode: _dark ? ThemeMode.dark : ThemeMode.light,
             onThemeModeChanged: (mode) =>

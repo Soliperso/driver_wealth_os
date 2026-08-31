@@ -2,9 +2,9 @@ import 'package:flutter/material.dart' show ThemeMode;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../features/accounts/domain/work_platform.dart';
-import '../../features/settings/domain/distance_unit.dart';
 import '../../features/settings/domain/driving_costs.dart';
 import '../../features/shifts/domain/shift.dart';
+import '../../features/tax/domain/expense.dart';
 import '../persistence/app_store.dart';
 
 /// Moves a driver's records between this device and their account.
@@ -59,17 +59,37 @@ final class SupabaseSyncService implements SyncService {
       syncCursor: startedAt,
       dirtyShiftIds: const {},
       deletedShiftIds: const {},
+      dirtyExpenseIds: const {},
+      deletedExpenseIds: const {},
       dirtyPreferences: false,
     );
   }
 
   Future<AppSnapshot> _pull(AppSnapshot local, String userId) async {
-    final cursor = local.syncCursor;
-    final rows = <Map<String, Object?>>[];
+    final merged = mergePulledShifts(
+      local,
+      await _pullTable('shifts', local.syncCursor, userId),
+    );
+    return mergePulledExpenses(
+      merged,
+      await _pullTable('expenses', local.syncCursor, userId),
+    );
+  }
 
+  /// Every row in [table] changed since [cursor], paged.
+  ///
+  /// Shared by shifts and expenses because the paging rule is a property of
+  /// PostgREST rather than of either record, and a second hand-rolled copy is
+  /// how one of the two ends up silently truncated at 500 rows.
+  Future<List<Map<String, Object?>>> _pullTable(
+    String table,
+    DateTime? cursor,
+    String userId,
+  ) async {
+    final rows = <Map<String, Object?>>[];
     var offset = 0;
     while (true) {
-      var query = _client.from('shifts').select().eq('user_id', userId);
+      var query = _client.from(table).select().eq('user_id', userId);
       if (cursor != null) {
         query = query.gt('updated_at', cursor.toUtc().toIso8601String());
       }
@@ -80,8 +100,7 @@ final class SupabaseSyncService implements SyncService {
       if (page.length < _pageSize) break;
       offset += _pageSize;
     }
-
-    return mergePulledShifts(local, rows);
+    return rows;
   }
 
   Future<AppSnapshot> _push(AppSnapshot local, String userId) async {
@@ -116,6 +135,35 @@ final class SupabaseSyncService implements SyncService {
       ], onConflict: 'user_id,id');
     }
 
+    final dirtyExpenses = local.expenses
+        .where((expense) => local.dirtyExpenseIds.contains(expense.id))
+        .toList();
+
+    if (dirtyExpenses.isNotEmpty) {
+      for (var start = 0; start < dirtyExpenses.length; start += _pageSize) {
+        final chunk = dirtyExpenses.skip(start).take(_pageSize);
+        await _client.from('expenses').upsert([
+          for (final expense in chunk) _toExpenseRow(expense, userId),
+        ], onConflict: 'user_id,id');
+      }
+    }
+
+    if (local.deletedExpenseIds.isNotEmpty) {
+      // Soft delete, for the same reason shifts use one: a hard delete would be
+      // undone by the next pull from a device that still holds the row.
+      final deletedAt = DateTime.now().toUtc().toIso8601String();
+      await _client.from('expenses').upsert([
+        for (final id in local.deletedExpenseIds)
+          {
+            'user_id': userId,
+            'id': id,
+            'amount': 0,
+            'incurred_on': deletedAt,
+            'deleted_at': deletedAt,
+          },
+      ], onConflict: 'user_id,id');
+    }
+
     if (local.dirtyPreferences) {
       await _client.from('driver_preferences').upsert({
         'user_id': userId,
@@ -128,7 +176,10 @@ final class SupabaseSyncService implements SyncService {
         'hourly_floor': local.hourlyFloor,
         'week_starts_on': local.weekStartsOn,
         'driving_days_per_week': local.drivingDaysPerWeek,
-        'distance_unit': local.distanceUnit.name,
+        // `distance_unit` and `currency_code` are deliberately not written.
+        // The app is miles and US dollars everywhere, so there is no preference
+        // to carry between devices. The columns stay on the table rather than
+        // being dropped, so an older build still syncing does not break.
         'theme_mode': local.themeMode.name,
       }, onConflict: 'user_id');
     }
@@ -175,6 +226,22 @@ final class SupabaseSyncService implements SyncService {
     'costs_reviewed': shift.costsReviewed,
     // Explicitly cleared: re-saving a shift that was deleted elsewhere is an
     // undelete, not a no-op.
+    'deleted_at': null,
+  };
+
+  static Map<String, Object?> _toExpenseRow(Expense expense, String userId) => {
+    'user_id': userId,
+    'id': expense.id,
+    'amount': expense.amount,
+    'category': expense.category.name,
+    'incurred_on': expense.incurredOn.toUtc().toIso8601String(),
+    'note': expense.note,
+    // The path only, and only when this device has one. The receipt image never
+    // leaves the phone that took it — see [Expense.receiptPath] — so this column
+    // is a hint to the device that holds the photo, not a way to fetch it.
+    'receipt_path': expense.receiptPath,
+    // Explicitly cleared: re-saving an expense deleted elsewhere is an undelete,
+    // not a no-op. Same rule as shifts.
     'deleted_at': null,
   };
 
@@ -270,6 +337,93 @@ AppSnapshot mergePulledShifts(
   return local.copyWith(shifts: shifts);
 }
 
+/// The same four rules as [mergePulledShifts], over expenses.
+///
+/// Deliberately a second function rather than a generic one: the two records
+/// share a shape today, but an expense carries a receipt path that must never
+/// be overwritten by a row from a device that does not hold the photo, and
+/// folding that exception into a shared merge would put it on the shift path
+/// too.
+AppSnapshot mergePulledExpenses(
+  AppSnapshot local,
+  List<Map<String, Object?>> rows,
+) {
+  if (rows.isEmpty) return local;
+
+  final byId = {for (final expense in local.expenses) expense.id: expense};
+  var changed = false;
+
+  for (final row in rows) {
+    final id = row['id'];
+    if (id is! String || id.isEmpty) continue;
+    // An unpushed local edit is what the driver is looking at; an incoming row
+    // is necessarily older than it.
+    if (local.dirtyExpenseIds.contains(id)) continue;
+    if (local.deletedExpenseIds.contains(id)) continue;
+
+    if (row['deleted_at'] != null) {
+      changed = byId.remove(id) != null || changed;
+      continue;
+    }
+
+    final expense = _rowToExpense(row);
+    // One malformed row must not abort the sync and strand every other change.
+    if (expense == null) continue;
+    // The receipt image never leaves the device that took it, so a row from
+    // another device has no path to offer. Keeping the local one means a second
+    // device cannot erase the photo this one still has.
+    byId[expense.id] = expense.receiptPath == null
+        ? expense.copyWith(receiptPath: byId[id]?.receiptPath)
+        : expense;
+    changed = true;
+  }
+
+  if (!changed) return local;
+  final expenses = byId.values.toList()
+    ..sort((a, b) => b.incurredOn.compareTo(a.incurredOn));
+  return local.copyWith(expenses: expenses);
+}
+
+/// A `expenses` row as the database spells it. Returns null for anything it
+/// cannot honestly decode.
+Expense? _rowToExpense(Map<String, Object?> row) {
+  final id = row['id'];
+  final incurredOn = DateTime.tryParse(row['incurred_on'] as String? ?? '');
+  final amount = _amount(row['amount']);
+  if (id is! String || id.isEmpty || incurredOn == null || amount == null) {
+    return null;
+  }
+  return Expense(
+    id: id,
+    amount: amount,
+    // Free text on purpose, so a Schedule C line can be added without a
+    // migration. A device on an older build keeps the record under `other`
+    // rather than dropping it.
+    category: ExpenseCategory.fromId(row['category']),
+    incurredOn: incurredOn,
+    note: row['note'] as String? ?? '',
+    receiptPath: row['receipt_path'] as String?,
+  );
+}
+
+/// An `amount` column as PostgREST hands it over.
+///
+/// Postgres `numeric` arrives as a *string*, so the obvious `is num` test would
+/// reject every genuine row and quietly lose the driver's whole expense history.
+/// Unlike [SupabaseSyncService._number] this returns null rather than zero for
+/// anything it cannot read: a shift with an unreadable figure is still a shift
+/// that happened, but an expense is only its amount, and inventing a ¤0 cost
+/// would put a false record on someone's tax return.
+double? _amount(Object? value) {
+  final parsed = switch (value) {
+    final num number => number.toDouble(),
+    final String text => double.tryParse(text),
+    _ => null,
+  };
+  if (parsed == null || !parsed.isFinite || parsed < 0) return null;
+  return parsed;
+}
+
 /// Reads the driver's account-level settings and goal back onto a fresh device.
 ///
 /// Separate from [SyncService.sync] because it only has to run when the local
@@ -344,7 +498,6 @@ extension RestoreAccountRecords on SupabaseSyncService {
           final int days when days >= 1 && days <= 7 => days,
           _ => restored.drivingDaysPerWeek,
         },
-        distanceUnit: DistanceUnit.fromName(row['distance_unit']),
         themeMode: ThemeMode.values.firstWhere(
           (mode) => mode.name == row['theme_mode'],
           orElse: () => restored.themeMode,

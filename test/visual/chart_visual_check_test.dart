@@ -17,8 +17,9 @@ import 'package:driver_wealth_os/features/admin/presentation/admin_dashboard_scr
 import 'package:driver_wealth_os/features/coach/presentation/best_times_screen.dart';
 import 'package:driver_wealth_os/features/coach/presentation/coach_screen.dart';
 import 'package:driver_wealth_os/features/driving/domain/driving_session.dart';
+import 'package:driver_wealth_os/features/history/presentation/history_analytics_sections.dart';
 import 'package:driver_wealth_os/features/history/presentation/history_screen.dart';
-import 'package:driver_wealth_os/features/settings/domain/distance_unit.dart';
+import 'package:driver_wealth_os/features/settings/domain/measurement_units.dart';
 import 'package:driver_wealth_os/features/settings/domain/driver_preferences.dart';
 // Both libraries declare a `DistanceUnit`; this file already uses the stored
 // one, so the display-side library is brought in for its units type only.
@@ -229,6 +230,17 @@ void main() {
     );
   });
 
+  // A shared session reports each app's share of the gross and no rate at all,
+  // which is a different shape from the ranked head-to-head above it. Worth an
+  // eye: it has to read as evidence rather than as a broken comparison.
+  testWidgets('platform comparison multi-app split', (tester) async {
+    await capture(
+      tester,
+      'platform_multi_app_split',
+      Scaffold(body: SingleChildScrollView(child: _multiAppComparison())),
+    );
+  });
+
   // Earnings DNA now lives on Coach's Best times screen rather than being
   // drawn a second time on History, so the heatmap is captured there.
   testWidgets('earnings dna light', (tester) async {
@@ -407,8 +419,43 @@ void main() {
   });
 }
 
+/// Four solo sessions to rank, plus one shared session that cannot be ranked.
+Widget _multiAppComparison() {
+  Shift solo(String id, WorkPlatform platform, double gross) => Shift.single(
+    id: id,
+    platform: platform,
+    gross: gross,
+    hours: 5,
+    miles: 60,
+    directExpenses: 12,
+    vehicleCostPerMile: .30,
+    completedAt: DateTime(2026, 8, 10),
+  );
+
+  return PlatformPerformanceSection(
+    shifts: [
+      solo('u1', WorkPlatform.uber, 240),
+      solo('u2', WorkPlatform.uber, 255),
+      solo('l1', WorkPlatform.lyft, 190),
+      solo('l2', WorkPlatform.lyft, 205),
+      Shift(
+        id: 'both',
+        earnings: const {WorkPlatform.uber: 150, WorkPlatform.lyft: 50},
+        hours: 5,
+        miles: 50,
+        directExpenses: 0,
+        vehicleCostPerMile: .20,
+        completedAt: DateTime(2026, 8, 11),
+      ),
+    ],
+  );
+}
+
 Widget _settings() => SettingsScreen(
   driverName: 'Ahmed',
+  shifts: const [],
+  expenses: const [],
+  onOpenTaxes: () {},
   dailyGoal: 100,
   drivingCosts: const DrivingCosts(
     energySource: EnergySource.gasoline,
@@ -419,7 +466,7 @@ Widget _settings() => SettingsScreen(
   hourlyFloor: 25,
   weekStartsOn: DateTime.monday,
   drivingDaysPerWeek: 5,
-  distanceUnit: DistanceUnit.miles,
+  units: const MeasurementUnits(),
   onDriverNameChanged: (_) {},
   onDailyGoalChanged: (_) {},
   onVehicleCostPerMileChanged: (_) {},
@@ -429,7 +476,6 @@ Widget _settings() => SettingsScreen(
   onHourlyFloorChanged: (_) {},
   onWeekStartsOnChanged: (_) {},
   onDrivingDaysPerWeekChanged: (_) {},
-  onDistanceUnitChanged: (_) {},
   themeMode: ThemeMode.system,
   onThemeModeChanged: (_) {},
   onExportData: () async {},

@@ -7,6 +7,8 @@ import '../../../core/widgets/empty_state_card.dart';
 import '../../../core/widgets/page_frame.dart';
 import '../../../core/widgets/soft_surfaces.dart';
 import '../../accounts/presentation/platform_logo.dart';
+import '../../settings/domain/driving_costs.dart';
+import '../../settings/domain/measurement_units.dart';
 import '../../shifts/domain/period_analytics.dart';
 import '../../shifts/domain/shift.dart';
 import '../../shifts/domain/shift_summary.dart';
@@ -22,9 +24,22 @@ class HistoryScreen extends StatefulWidget {
     required this.onAddShift,
     required this.onShiftUpdated,
     required this.onShiftDeleted,
+    this.units = const MeasurementUnits(),
+    this.drivingCosts = const DrivingCosts(),
+    this.clock,
   });
 
   final List<Shift> shifts;
+  final MeasurementUnits units;
+
+  /// Passed through to the edit screen behind a shift's detail, which prices
+  /// fuel against the driver's current rates.
+  final DrivingCosts drivingCosts;
+
+  /// Injectable wall clock. This screen anchors its period on "now", so a test
+  /// with fixed fixture dates could otherwise only pass during the week it was
+  /// written — and silently started failing the following Monday.
+  final DateTime Function()? clock;
   final VoidCallback onAddShift;
   final ValueChanged<Shift> onShiftUpdated;
   final ValueChanged<String> onShiftDeleted;
@@ -49,7 +64,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
   @override
   void initState() {
     super.initState();
-    _now = DateTime.now();
+    _now = (widget.clock ?? DateTime.now)();
     _anchor = _now;
     _recompute();
   }
@@ -129,6 +144,21 @@ class _HistoryScreenState extends State<HistoryScreen> {
     });
   }
 
+  /// Names the set the list is currently showing.
+  ///
+  /// Deliberately not "All time": the driver is looking at sessions, and the
+  /// heading should say which sessions rather than which stretch of calendar.
+  ///
+  /// A relative window ("This week") reads naturally lowercased into the
+  /// sentence; a dated one ("Aug 11–17") does not, because lowercasing would
+  /// take the month name down with it.
+  String get _listHeading {
+    if (_showAllShifts) return 'All sessions';
+    final label = _performance.range.label(_now);
+    final relative = label.startsWith('This ') || label == 'Today';
+    return relative ? 'Sessions ${label.toLowerCase()}' : 'Sessions · $label';
+  }
+
   @override
   Widget build(BuildContext context) {
     final displayedShifts = _showAllShifts ? _ordered : _periodShifts;
@@ -159,6 +189,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     performance: _performance,
                     period: _period,
                     now: _now,
+                    units: widget.units,
                     onPeriodChanged: _changePeriod,
                     onStep: _step,
                   ),
@@ -186,10 +217,19 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       ),
                     ],
                     const SizedBox(height: Space.md),
-                    PeriodPerformanceSection(performance: _performance),
+                    PeriodPerformanceSection(
+                      performance: _performance,
+                      units: widget.units,
+                    ),
                     const SizedBox(height: Space.md),
-                    CostBreakdownSection(summary: _performance.summary),
-                    PlatformPerformanceSection(shifts: _periodShifts),
+                    CostBreakdownSection(
+                      summary: _performance.summary,
+                      units: widget.units,
+                    ),
+                    PlatformPerformanceSection(
+                      shifts: _periodShifts,
+                      units: widget.units,
+                    ),
                     // Earnings DNA is not repeated here. It lives on Coach's
                     // Best times screen, which reads the same
                     // `ShiftAnalytics.earningsPatterns` data and ranks it in
@@ -197,16 +237,32 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     // the same "N of 4 patterns tracked" progress line.
                     Space.gapXl,
                     if (displayedShifts.isNotEmpty) ...[
+                      // The list changes what it contains when "View all" is
+                      // chosen, and without a heading nothing said so — the
+                      // rows just silently grew. This is the label that tells
+                      // the reader which set they are looking at.
+                      Text(
+                        _listHeading,
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: Space.sm),
                       // Grouped by day, because a bare list of shifts makes
                       // the reader add up their own Tuesday. The header
                       // carries the day's net so the list answers the same
                       // question the chart above it does.
                       for (final day in _byDay(displayedShifts)) ...[
-                        _DayHeader(date: day.date, shifts: day.shifts),
+                        _DayHeader(
+                          date: day.date,
+                          shifts: day.shifts,
+                          units: widget.units,
+                        ),
                         const SizedBox(height: Space.sm),
                         for (final shift in day.shifts) ...[
                           _HistoryRow(
                             shift: shift,
+                            units: widget.units,
                             onTap: () => _openShift(shift),
                           ),
                           const SizedBox(height: Space.sm),
@@ -257,6 +313,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
       MaterialPageRoute(
         builder: (_) => ShiftDetailScreen(
           shift: shift,
+          units: widget.units,
+          drivingCosts: widget.drivingCosts,
           onUpdated: widget.onShiftUpdated,
           onDeleted: widget.onShiftDeleted,
         ),
@@ -448,10 +506,15 @@ class _EmptyHistory extends StatelessWidget {
 /// The day's net is the figure the driver is scanning for; without it the list
 /// is a stack of individual shifts that they have to total in their head.
 class _DayHeader extends StatelessWidget {
-  const _DayHeader({required this.date, required this.shifts});
+  const _DayHeader({
+    required this.date,
+    required this.shifts,
+    required this.units,
+  });
 
   final DateTime date;
   final List<Shift> shifts;
+  final MeasurementUnits units;
 
   @override
   Widget build(BuildContext context) {
@@ -493,7 +556,7 @@ class _DayHeader extends StatelessWidget {
           ),
           const SizedBox(width: Space.sm),
           Text(
-            Money.cents(summary.netProfit),
+            units.cents(summary.netProfit),
             style: textTheme.labelLarge?.copyWith(
               // A losing day must not be printed in the profit colour.
               color: summary.netProfit < 0 ? colors.error : colors.primary,
@@ -509,9 +572,14 @@ class _DayHeader extends StatelessWidget {
 }
 
 class _HistoryRow extends StatelessWidget {
-  const _HistoryRow({required this.shift, required this.onTap});
+  const _HistoryRow({
+    required this.shift,
+    required this.units,
+    required this.onTap,
+  });
 
   final Shift shift;
+  final MeasurementUnits units;
   final VoidCallback onTap;
 
   @override
@@ -534,7 +602,10 @@ class _HistoryRow extends StatelessWidget {
             ),
             child: Row(
               children: [
-                PlatformLogo(platform: shift.platform, size: 34),
+                PlatformLogoCluster(
+                  platforms: shift.platformsByEarnings,
+                  size: 34,
+                ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Column(
@@ -542,7 +613,10 @@ class _HistoryRow extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        shift.platform.displayName,
+                        // Names every app the session ran. Showing only the
+                        // biggest earner made a two-app shift indistinguishable
+                        // from a one-app one.
+                        shift.platformLabel,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
@@ -575,7 +649,7 @@ class _HistoryRow extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Text(
-                      Money.cents(shift.netProfit),
+                      units.cents(shift.netProfit),
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         // A losing shift must not use the profit colour.
                         color: shift.netProfit < 0
@@ -589,7 +663,7 @@ class _HistoryRow extends StatelessWidget {
                       // "Net" only restated the colour-coded figure above it.
                       // The hourly rate is what makes two shifts comparable.
                       shift.hours > 0
-                          ? '${Money.cents(shift.netPerHour)}/hr'
+                          ? '${units.cents(shift.netPerHour)}/hr'
                           : 'Net',
                       style: Theme.of(context).textTheme.labelSmall?.copyWith(
                         color: colors.onSurfaceVariant,

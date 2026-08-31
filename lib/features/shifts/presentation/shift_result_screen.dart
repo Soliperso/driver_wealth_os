@@ -4,6 +4,7 @@ import '../../../core/format/money.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/page_frame.dart';
 import '../../../core/widgets/soft_surfaces.dart';
+import '../../settings/domain/measurement_units.dart';
 import '../domain/shift.dart';
 
 class ShiftResultScreen extends StatefulWidget {
@@ -11,10 +12,12 @@ class ShiftResultScreen extends StatefulWidget {
     super.key,
     required this.shift,
     required this.onSave,
+    this.units = const MeasurementUnits(),
     this.saveLabel = 'Save to Today',
   });
   final Shift shift;
   final VoidCallback onSave;
+  final MeasurementUnits units;
   final String saveLabel;
 
   @override
@@ -27,6 +30,7 @@ class _ShiftResultScreenState extends State<ShiftResultScreen> {
   @override
   Widget build(BuildContext context) {
     final shift = widget.shift;
+    final units = widget.units;
     final colors = Theme.of(context).colorScheme;
     return SoftScaffold(
       title: 'Session result',
@@ -62,7 +66,7 @@ class _ShiftResultScreenState extends State<ShiftResultScreen> {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      Money.cents(shift.netProfit),
+                      units.cents(shift.netProfit),
                       style: Theme.of(context).textTheme.displaySmall?.copyWith(
                         fontWeight: FontWeight.w900,
                         color: colors.onSurface,
@@ -85,15 +89,15 @@ class _ShiftResultScreenState extends State<ShiftResultScreen> {
                       Expanded(
                         child: _Metric(
                           label: 'Net / hour',
-                          value: Money.cents(shift.netPerHour),
+                          value: units.cents(shift.netPerHour),
                           compact: compact,
                         ),
                       ),
                       const SizedBox(width: 10),
                       Expanded(
                         child: _Metric(
-                          label: 'Net / mile',
-                          value: Money.cents(shift.netPerMile),
+                          label: 'Net / ${units.distance.singular}',
+                          value: units.cents(shift.netPerMile),
                           compact: compact,
                         ),
                       ),
@@ -101,7 +105,7 @@ class _ShiftResultScreenState extends State<ShiftResultScreen> {
                       Expanded(
                         child: _Metric(
                           label: 'Total costs',
-                          value: Money.cents(shift.totalExpenses),
+                          value: units.cents(shift.totalExpenses),
                           compact: compact,
                         ),
                       ),
@@ -125,21 +129,25 @@ class _ShiftResultScreenState extends State<ShiftResultScreen> {
                     _CalculationRow(
                       label: 'Gross earnings',
                       value: shift.gross,
+                      units: units,
                     ),
                     _CalculationRow(
                       label: 'Fuel, tolls & parking',
                       value: -shift.directExpenses,
+                      units: units,
                     ),
                     _CalculationRow(
                       label:
-                          'Vehicle wear (${Money.number(shift.miles)} mi × '
-                          '${Money.cents(shift.vehicleCostPerMile)})',
+                          'Vehicle wear (${units.distanceLabel(shift.miles)} × '
+                          '${units.rateLabel(shift.vehicleCostPerMile)})',
                       value: -shift.vehicleCost,
+                      units: units,
                     ),
                     const Divider(height: 24),
                     _CalculationRow(
                       label: 'True profit',
                       value: shift.netProfit,
+                      units: units,
                       emphasized: true,
                     ),
                   ],
@@ -209,11 +217,13 @@ class _CalculationRow extends StatelessWidget {
   const _CalculationRow({
     required this.label,
     required this.value,
+    required this.units,
     this.emphasized = false,
   });
 
   final String label;
   final double value;
+  final MeasurementUnits units;
   final bool emphasized;
 
   @override
@@ -232,7 +242,7 @@ class _CalculationRow extends StatelessWidget {
           Expanded(child: Text(label, style: style)),
           const SizedBox(width: 12),
           Text(
-            prefix.isEmpty ? Money.cents(value) : Money.negated(value),
+            prefix.isEmpty ? units.cents(value) : units.negated(value),
             style: style?.copyWith(fontFeatures: tabularFigures),
           ),
         ],

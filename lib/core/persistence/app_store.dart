@@ -5,8 +5,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../features/driving/domain/driving_session.dart';
 import '../../features/settings/domain/driving_costs.dart';
-import '../../features/settings/domain/distance_unit.dart';
+import '../../features/settings/domain/measurement_units.dart';
 import '../../features/shifts/domain/shift.dart';
+import '../../features/tax/domain/expense.dart';
 
 class AppSnapshot {
   const AppSnapshot({
@@ -19,14 +20,16 @@ class AppSnapshot {
     this.hourlyFloor = defaultHourlyFloor,
     this.weekStartsOn = DateTime.monday,
     this.drivingDaysPerWeek = defaultDrivingDaysPerWeek,
-    this.distanceUnit = DistanceUnit.miles,
     this.shifts = const [],
+    this.expenses = const [],
     this.themeMode = ThemeMode.system,
     this.activeSession,
     this.pendingDraft,
     this.syncCursor,
     this.dirtyShiftIds = const {},
     this.deletedShiftIds = const {},
+    this.dirtyExpenseIds = const {},
+    this.deletedExpenseIds = const {},
     this.dirtyPreferences = false,
   });
 
@@ -59,9 +62,18 @@ class AppSnapshot {
   final int weekStartsOn;
 
   final int drivingDaysPerWeek;
-  final DistanceUnit distanceUnit;
   final List<Shift> shifts;
+
+  /// Costs that belong to the business rather than to one shift — a brake job,
+  /// an insurance premium, a phone bill. Held newest first, like [shifts].
+  final List<Expense> expenses;
+
   final ThemeMode themeMode;
+
+  /// How figures are written. Carries no stored preference: the app is miles
+  /// and US dollars, so there is nothing here for a driver to choose and
+  /// nothing to persist.
+  MeasurementUnits get units => const MeasurementUnits();
 
   /// The cost side of the preferences, bundled for the callers that price a
   /// mile rather than edit one.
@@ -106,15 +118,24 @@ class AppSnapshot {
   /// or the next pull from another device would resurrect it.
   final Set<String> deletedShiftIds;
 
+  /// The same two sets, for expenses. Kept separate rather than pooled with the
+  /// shift ids: the two live in different tables, and one id colliding across
+  /// them would silently suppress the other record's push.
+  final Set<String> dirtyExpenseIds;
+  final Set<String> deletedExpenseIds;
+
   final bool dirtyPreferences;
 
   bool get hasUnsyncedChanges =>
       dirtyShiftIds.isNotEmpty ||
       deletedShiftIds.isNotEmpty ||
+      dirtyExpenseIds.isNotEmpty ||
+      deletedExpenseIds.isNotEmpty ||
       dirtyPreferences;
 
   AppSnapshot copyWith({
     List<Shift>? shifts,
+    List<Expense>? expenses,
     String? driverName,
     double? dailyGoal,
     double? vehicleCostPerMile,
@@ -124,11 +145,12 @@ class AppSnapshot {
     double? hourlyFloor,
     int? weekStartsOn,
     int? drivingDaysPerWeek,
-    DistanceUnit? distanceUnit,
     ThemeMode? themeMode,
     DateTime? syncCursor,
     Set<String>? dirtyShiftIds,
     Set<String>? deletedShiftIds,
+    Set<String>? dirtyExpenseIds,
+    Set<String>? deletedExpenseIds,
     bool? dirtyPreferences,
   }) => AppSnapshot(
     driverName: driverName ?? this.driverName,
@@ -140,14 +162,16 @@ class AppSnapshot {
     hourlyFloor: hourlyFloor ?? this.hourlyFloor,
     weekStartsOn: weekStartsOn ?? this.weekStartsOn,
     drivingDaysPerWeek: drivingDaysPerWeek ?? this.drivingDaysPerWeek,
-    distanceUnit: distanceUnit ?? this.distanceUnit,
     shifts: shifts ?? this.shifts,
+    expenses: expenses ?? this.expenses,
     themeMode: themeMode ?? this.themeMode,
     activeSession: activeSession,
     pendingDraft: pendingDraft,
     syncCursor: syncCursor ?? this.syncCursor,
     dirtyShiftIds: dirtyShiftIds ?? this.dirtyShiftIds,
     deletedShiftIds: deletedShiftIds ?? this.deletedShiftIds,
+    dirtyExpenseIds: dirtyExpenseIds ?? this.dirtyExpenseIds,
+    deletedExpenseIds: deletedExpenseIds ?? this.deletedExpenseIds,
     dirtyPreferences: dirtyPreferences ?? this.dirtyPreferences,
   );
 
@@ -161,14 +185,16 @@ class AppSnapshot {
     'hourlyFloor': hourlyFloor,
     'weekStartsOn': weekStartsOn,
     'drivingDaysPerWeek': drivingDaysPerWeek,
-    'distanceUnit': distanceUnit.name,
     'shifts': shifts.map((shift) => shift.toJson()).toList(),
+    'expenses': expenses.map((expense) => expense.toJson()).toList(),
     'themeMode': themeMode.name,
     'activeSession': activeSession?.toJson(),
     'pendingDraft': pendingDraft?.toJson(),
     'syncCursor': syncCursor?.toUtc().toIso8601String(),
     'dirtyShiftIds': dirtyShiftIds.toList(),
     'deletedShiftIds': deletedShiftIds.toList(),
+    'dirtyExpenseIds': dirtyExpenseIds.toList(),
+    'deletedExpenseIds': deletedExpenseIds.toList(),
     'dirtyPreferences': dirtyPreferences,
   };
 
@@ -183,6 +209,21 @@ class AppSnapshot {
           uniqueShifts.putIfAbsent(shift.id, () => shift);
         } on FormatException {
           // Ignore one damaged record without discarding the remaining history.
+        }
+      }
+    }
+    // Same treatment as shifts: keyed by id so duplicates collapse, and one
+    // damaged record is dropped rather than taking the rest of the ledger down.
+    final rawExpenses = json['expenses'];
+    final uniqueExpenses = <String, Expense>{};
+    if (rawExpenses is List) {
+      for (final entry in rawExpenses) {
+        if (entry is! Map) continue;
+        try {
+          final expense = Expense.fromJson(Map<String, Object?>.from(entry));
+          uniqueExpenses.putIfAbsent(expense.id, () => expense);
+        } on FormatException {
+          continue;
         }
       }
     }
@@ -243,7 +284,9 @@ class AppSnapshot {
         final int days when days >= 1 && days <= 7 => days,
         _ => defaultDrivingDaysPerWeek,
       },
-      distanceUnit: DistanceUnit.fromName(json['distanceUnit']),
+      // `distanceUnit` and `currency` are deliberately not read. A snapshot
+      // written while the app still offered them is loaded as miles and
+      // dollars, which is what every stored figure has always meant.
       themeMode: ThemeMode.values.firstWhere(
         (mode) => mode.name == json['themeMode'],
         orElse: () => ThemeMode.system,
@@ -256,6 +299,8 @@ class AppSnapshot {
       },
       shifts: uniqueShifts.values.toList()
         ..sort((a, b) => b.completedAt.compareTo(a.completedAt)),
+      expenses: uniqueExpenses.values.toList()
+        ..sort((a, b) => b.incurredOn.compareTo(a.incurredOn)),
       pendingDraft: pendingDraft,
       syncCursor: DateTime.tryParse(json['syncCursor'] as String? ?? ''),
       // A snapshot written before sync existed has no bookkeeping. Treating
@@ -263,6 +308,8 @@ class AppSnapshot {
       // first sign-in uploads everything instead — see SyncService.
       dirtyShiftIds: _stringSet(json['dirtyShiftIds']),
       deletedShiftIds: _stringSet(json['deletedShiftIds']),
+      dirtyExpenseIds: _stringSet(json['dirtyExpenseIds']),
+      deletedExpenseIds: _stringSet(json['deletedExpenseIds']),
       dirtyPreferences: json['dirtyPreferences'] == true,
     );
   }

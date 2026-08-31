@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/format/money.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/soft_surfaces.dart';
+import '../../settings/domain/measurement_units.dart';
 import '../../shifts/domain/shift_summary.dart';
 
 /// What happened to every dollar earned in the period.
@@ -14,9 +15,14 @@ import '../../shifts/domain/shift_summary.dart';
 /// allowance is the cost they never see, which is exactly why it needs its own
 /// bar segment rather than being folded into a single "costs" total.
 class CostBreakdownSection extends StatelessWidget {
-  const CostBreakdownSection({super.key, required this.summary});
+  const CostBreakdownSection({
+    super.key,
+    required this.summary,
+    this.units = const MeasurementUnits(),
+  });
 
   final ShiftSummary summary;
+  final MeasurementUnits units;
 
   @override
   Widget build(BuildContext context) {
@@ -50,7 +56,7 @@ class CostBreakdownSection extends StatelessWidget {
           Text(
             lost
                 ? 'Costs came to more than this period earned.'
-                : 'Every ${Money.whole(1)} earned, split into what you kept '
+                : 'Every ${units.whole(1)} earned, split into what you kept '
                       'and what it cost to earn it.',
             style: textTheme.bodySmall?.copyWith(
               color: colors.onSurfaceVariant,
@@ -82,23 +88,26 @@ class CostBreakdownSection extends StatelessWidget {
               label: 'Take-home',
               amount: summary.netProfit,
               share: summary.netProfit / base,
+              units: units,
             ),
           _BreakdownRow(
             color: directColor,
             label: 'Fuel, tolls & parking',
             amount: summary.directExpenses,
             share: base == 0 ? 0 : summary.directExpenses / base,
+            units: units,
           ),
           _BreakdownRow(
             color: vehicleColor,
             label: 'Vehicle wear',
             amount: summary.vehicleCost,
             share: base == 0 ? 0 : summary.vehicleCost / base,
+            units: units,
             // The one cost a driver never gets an invoice for, so it gets the
             // one line of explanation.
             note: summary.miles > 0
-                ? 'Per-mile running cost across '
-                      '${Money.compactNumber(summary.miles)} miles'
+                ? 'Per-${units.distance.singular} running cost across '
+                      '${units.distanceLabel(summary.miles)}'
                 : null,
           ),
           if (summary.miles > 0) ...[
@@ -114,10 +123,10 @@ class CostBreakdownSection extends StatelessWidget {
                 Expanded(
                   child: Text(
                     lost
-                        ? 'You lost ${Money.cents(summary.netPerMile.abs())} '
-                              'for every mile driven.'
-                        : 'You keep ${Money.cents(summary.netPerMile)} of every '
-                              'mile you drive.',
+                        ? 'You lost ${units.cents(summary.netPerMile.abs())} '
+                              'for every ${units.distance.singular} driven.'
+                        : 'You keep ${units.cents(summary.netPerMile)} '
+                              'of every ${units.distance.singular} you drive.',
                     style: textTheme.bodySmall?.copyWith(
                       color: colors.onSurfaceVariant,
                       fontFeatures: tabularFigures,
@@ -191,6 +200,7 @@ class _BreakdownRow extends StatelessWidget {
     required this.label,
     required this.amount,
     required this.share,
+    required this.units,
     this.note,
   });
 
@@ -198,6 +208,7 @@ class _BreakdownRow extends StatelessWidget {
   final String label;
   final double amount;
   final double share;
+  final MeasurementUnits units;
   final String? note;
 
   @override
@@ -250,7 +261,7 @@ class _BreakdownRow extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text(
-                Money.cents(amount),
+                units.cents(amount),
                 style: textTheme.bodyMedium?.copyWith(
                   fontWeight: FontWeight.w800,
                   fontFeatures: tabularFigures,

@@ -475,7 +475,8 @@ class _SuggestedQuestionsState extends State<_SuggestedQuestions> {
           SectionCardTitle(
             icon: Icons.forum_rounded,
             title: 'Coach chat',
-            subtitle: 'Choose a question for an answer calculated from your '
+            subtitle:
+                'Choose a question for an answer calculated from your '
                 'saved history.',
             trailing: const _LocalPill(),
           ),
@@ -592,7 +593,8 @@ class _EmptyCoach extends StatelessWidget {
       key: const ValueKey('coach-empty'),
       icon: Icons.auto_awesome_rounded,
       title: 'Nothing to coach yet',
-      message: 'Coach needs earnings, hours, distance and costs before '
+      message:
+          'Coach needs earnings, hours, distance and costs before '
           'it can compare which of your sessions actually paid.',
       action: add == null
           ? null

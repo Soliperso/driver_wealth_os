@@ -28,9 +28,7 @@ void main() {
     expect(find.byType(NavigationBar), findsNothing);
   });
 
-  testWidgets('weekly, DNA and coach are reachable end to end', (
-    tester,
-  ) async {
+  testWidgets('weekly, DNA and coach are reachable end to end', (tester) async {
     final store = MemoryAppStore(
       AppSnapshot(driverName: 'Ahmed', shifts: _patternShifts()),
     );

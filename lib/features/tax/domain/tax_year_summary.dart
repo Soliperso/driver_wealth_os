@@ -93,7 +93,8 @@ class TaxYearSummary {
       _currency((standardMileageDeduction - vehicleExpenses).abs());
 
   /// Total deductions at the better vehicle method.
-  double get totalDeductions => _currency(betterVehicleDeduction + otherExpenses);
+  double get totalDeductions =>
+      _currency(betterVehicleDeduction + otherExpenses);
 
   /// Gross minus deductions. Not "taxable income" — that depends on filing
   /// status, other income and the QBI deduction, none of which the app knows.
@@ -105,9 +106,9 @@ class TaxYearSummary {
 
   /// Builds the year from the driver's own records.
   ///
-  /// [vehicleCostPerMile] is only used where a shift carries no rate of its
-  /// own; each shift's stored rate wins, so a year priced under an older cost
-  /// model is not retroactively repriced.
+  /// Each shift is priced at the vehicle rate it was stored with, so a year
+  /// costed under an older model is not retroactively repriced when the driver
+  /// changes their rate today.
   factory TaxYearSummary.from({
     required int year,
     required Iterable<Shift> shifts,

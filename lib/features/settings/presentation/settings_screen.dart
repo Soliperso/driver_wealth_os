@@ -2,23 +2,29 @@ import 'package:flutter/material.dart';
 
 import '../../../core/format/money.dart';
 import '../../../core/theme/app_spacing.dart';
+import '../../../core/widgets/editor_sheets.dart';
 import '../../../core/widgets/page_frame.dart';
 import '../../../core/widgets/section_heading.dart';
 import '../../../core/widgets/soft_surfaces.dart';
+import '../../shifts/domain/shift.dart';
 import '../../tax/domain/expense.dart';
-import '../domain/distance_unit.dart';
+import '../../tax/domain/tax_year_summary.dart';
 import '../domain/driving_costs.dart';
+import '../domain/measurement_units.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({
     super.key,
     required this.driverName,
+    required this.shifts,
+    required this.expenses,
+    required this.onOpenTaxes,
     required this.dailyGoal,
     required this.drivingCosts,
     required this.hourlyFloor,
     required this.weekStartsOn,
     required this.drivingDaysPerWeek,
-    required this.distanceUnit,
+    required this.units,
     required this.onDriverNameChanged,
     required this.onDailyGoalChanged,
     required this.onVehicleCostPerMileChanged,
@@ -28,7 +34,6 @@ class SettingsScreen extends StatefulWidget {
     required this.onHourlyFloorChanged,
     required this.onWeekStartsOnChanged,
     required this.onDrivingDaysPerWeekChanged,
-    required this.onDistanceUnitChanged,
     required this.themeMode,
     required this.onThemeModeChanged,
     required this.onExportData,
@@ -40,12 +45,21 @@ class SettingsScreen extends StatefulWidget {
   });
 
   final String driverName;
+
+  /// Both record lists, so the expense-categories sheet can show what the
+  /// driver actually spent rather than a list of enum constants.
+  final List<Shift> shifts;
+  final List<Expense> expenses;
+
+  /// Opens the Taxes tab, where an expense is actually managed. The sheet here
+  /// explains the categories; it is not a second place to edit records.
+  final VoidCallback onOpenTaxes;
   final double dailyGoal;
   final DrivingCosts drivingCosts;
   final double hourlyFloor;
   final int weekStartsOn;
   final int drivingDaysPerWeek;
-  final DistanceUnit distanceUnit;
+  final MeasurementUnits units;
   final ValueChanged<String> onDriverNameChanged;
   final ValueChanged<double> onDailyGoalChanged;
   final ValueChanged<double> onVehicleCostPerMileChanged;
@@ -55,7 +69,6 @@ class SettingsScreen extends StatefulWidget {
   final ValueChanged<double> onHourlyFloorChanged;
   final ValueChanged<int> onWeekStartsOnChanged;
   final ValueChanged<int> onDrivingDaysPerWeekChanged;
-  final ValueChanged<DistanceUnit> onDistanceUnitChanged;
   final ThemeMode themeMode;
   final ValueChanged<ThemeMode> onThemeModeChanged;
   final Future<void> Function() onExportData;
@@ -73,7 +86,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final costs = widget.drivingCosts;
-    final unit = widget.distanceUnit;
+    final units = widget.units;
     return SoftScaffold(
       title: 'Settings',
       body: PageFrame(
@@ -99,14 +112,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   key: const ValueKey('settings-daily-goal'),
                   icon: Icons.flag_outlined,
                   title: 'Daily profit goal',
-                  value: Money.whole(widget.dailyGoal),
+                  value: units.whole(widget.dailyGoal),
                   onTap: _editDailyGoal,
                 ),
                 _SettingsTile(
                   key: const ValueKey('settings-hourly-floor'),
                   icon: Icons.speed_rounded,
                   title: 'Minimum profitable rate',
-                  value: '${Money.whole(widget.hourlyFloor)}/hr',
+                  value: '${units.whole(widget.hourlyFloor)}/hr',
                   onTap: _editHourlyFloor,
                 ),
               ],
@@ -135,21 +148,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   icon: Icons.payments_outlined,
                   title: 'Fuel price',
                   value:
-                      '${Money.cents(costs.fuelPrice)}/${costs.energySource.unit}',
+                      '${units.cents(costs.fuelPrice)}/${costs.energySource.unit}',
                   onTap: _editFuelPrice,
                 ),
                 _SettingsTile(
                   key: const ValueKey('settings-vehicle-rate'),
                   icon: Icons.directions_car_outlined,
                   title: 'Vehicle cost',
-                  value:
-                      '${Money.cents(unit.rateFromPerMile(costs.vehicleCostPerMile))}/${unit.symbol}',
+                  value: units.rateLabel(costs.vehicleCostPerMile),
                   onTap: _editVehicleRate,
                 ),
               ],
             ),
             const SizedBox(height: Space.md),
-            _DrivingCostSummary(costs: costs, unit: unit),
+            _DrivingCostSummary(costs: costs, units: units),
             const SizedBox(height: Space.xl),
             _SettingsSection(
               title: 'Driving',
@@ -178,18 +190,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
               title: 'App',
               children: [
                 _SettingsTile(
-                  key: const ValueKey('settings-distance-unit'),
-                  icon: Icons.straighten_rounded,
-                  title: 'Distance units',
-                  value: unit.label,
-                  onTap: _chooseDistanceUnit,
-                ),
-                _SettingsTile(
                   key: const ValueKey('settings-expense-categories'),
                   icon: Icons.receipt_long_rounded,
                   title: 'Expense categories',
                   subtitle: 'Deductible business expenses',
-                  value: '${ExpenseCategory.values.length}',
+                  // The year's recorded total, not the number of enum
+                  // constants — a count of categories is a fact about the app
+                  // rather than about the driver.
+                  value: units.whole(_recordedExpenses),
                   onTap: _showExpenseCategories,
                 ),
               ],
@@ -219,13 +227,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   title: 'Privacy & security',
                   onTap: widget.onOpenPrivacy,
                 ),
-                // if (widget.onConnectAccounts != null)
-                //   _SettingsTile(
-                //     key: const ValueKey('settings-work-accounts'),
-                //     icon: Icons.link_rounded,
-                //     title: 'Work accounts',
-                //     onTap: widget.onConnectAccounts,
-                //   ),
+                if (widget.onConnectAccounts != null)
+                  _SettingsTile(
+                    key: const ValueKey('settings-work-accounts'),
+                    icon: Icons.link_rounded,
+                    title: 'Work accounts',
+                    onTap: widget.onConnectAccounts,
+                  ),
                 if (widget.onOpenAdmin != null)
                   _SettingsTile(
                     key: const ValueKey('settings-open-admin'),
@@ -265,11 +273,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
       title: 'Daily profit goal',
       initialValue: widget.dailyGoal,
       fieldKey: const ValueKey('settings-daily-goal-field'),
-      prefixText: '\$ ',
+      prefixText: '${widget.units.currency.symbol} ',
       suffixText: '/ day',
       min: 1,
       max: 100000,
-      rangeError: 'Enter an amount between \$1 and \$100,000',
+      rangeError:
+          'Enter an amount between ${widget.units.currency.symbol}1 and '
+          '${widget.units.currency.symbol}100,000',
     );
     if (value != null) widget.onDailyGoalChanged(value);
   }
@@ -279,11 +289,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
       title: 'Minimum profitable rate',
       initialValue: widget.hourlyFloor,
       fieldKey: const ValueKey('settings-hourly-floor-field'),
-      prefixText: '\$ ',
+      prefixText: '${widget.units.currency.symbol} ',
       suffixText: '/ hr',
       min: 1,
       max: 10000,
-      rangeError: 'Enter an amount between \$1 and \$10,000',
+      rangeError:
+          'Enter an amount between ${widget.units.currency.symbol}1 and '
+          '${widget.units.currency.symbol}10,000',
     );
     if (value != null) widget.onHourlyFloorChanged(value);
   }
@@ -308,32 +320,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
       title: 'Fuel price',
       initialValue: costs.fuelPrice,
       fieldKey: const ValueKey('settings-fuel-price-field'),
-      prefixText: '\$ ',
+      prefixText: '${widget.units.currency.symbol} ',
       suffixText: '/ ${costs.energySource.unit}',
       min: 0,
       max: 100,
-      rangeError: 'Enter a price between \$0 and \$100',
+      rangeError:
+          'Enter a price between ${widget.units.currency.symbol}0 and '
+          '${widget.units.currency.symbol}100',
     );
     if (value != null) widget.onFuelPriceChanged(value);
   }
 
   Future<void> _editVehicleRate() async {
-    final unit = widget.distanceUnit;
+    final units = widget.units;
+    final symbol = units.currency.symbol;
     final value = await _showNumberEditor(
       title: 'Vehicle cost',
-      initialValue: unit.rateFromPerMile(
-        widget.drivingCosts.vehicleCostPerMile,
-      ),
+      initialValue: widget.drivingCosts.vehicleCostPerMile,
       fieldKey: const ValueKey('settings-vehicle-rate-field'),
-      prefixText: '\$ ',
-      suffixText: '/ ${unit.symbol}',
+      prefixText: '$symbol ',
+      suffixText: '/ ${units.distance.symbol}',
       min: 0,
       max: 100,
-      rangeError: 'Enter a rate between \$0 and \$100',
+      rangeError: 'Enter a rate between ${symbol}0 and ${symbol}100',
     );
-    if (value != null) {
-      widget.onVehicleCostPerMileChanged(unit.rateToPerMile(value));
-    }
+    // Typed per mile and stored per mile, so the figure goes straight through.
+    if (value != null) widget.onVehicleCostPerMileChanged(value);
   }
 
   Future<void> _chooseEnergySource() async {
@@ -368,17 +380,43 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (selected != null) widget.onDrivingDaysPerWeekChanged(selected);
   }
 
-  Future<void> _chooseDistanceUnit() async {
-    final selected = await _showChoice<DistanceUnit>(
-      title: 'Distance units',
-      current: widget.distanceUnit,
-      values: DistanceUnit.values,
-      label: (unit) => unit.label,
-    );
-    if (selected != null) widget.onDistanceUnitChanged(selected);
+  /// This year's totals per category, and whether the mileage rate has already
+  /// absorbed the vehicle ones.
+  TaxYearSummary get _taxYear => TaxYearSummary.from(
+    year: DateTime.now().year,
+    shifts: widget.shifts,
+    expenses: widget.expenses,
+  );
+
+  /// Standalone expenses recorded this year. Deliberately not the tax year's
+  /// full deduction: this tile is about the records the driver has entered
+  /// here, and folding in per-shift fuel would make the number disagree with
+  /// the list the sheet then shows.
+  double get _recordedExpenses {
+    final year = DateTime.now().year;
+    var total = 0.0;
+    for (final expense in widget.expenses) {
+      if (expense.occurredIn(year)) total += expense.amount;
+    }
+    return total;
   }
 
   Future<void> _showExpenseCategories() async {
+    final units = widget.units;
+    final summary = _taxYear;
+    final totals = summary.expensesByCategory;
+    final standardMileage =
+        summary.betterMethod == DeductionMethod.standardMileage;
+
+    // Categories the driver has actually used come first. The rest stay below
+    // as the reference list they have always been, so the sheet still answers
+    // "what can I even claim?" for someone who has recorded nothing yet.
+    final ordered = [
+      ...ExpenseCategory.values.where((c) => (totals[c] ?? 0) > 0),
+      ...ExpenseCategory.values.where((c) => (totals[c] ?? 0) <= 0),
+    ];
+
+    if (!mounted) return;
     await showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
@@ -403,19 +441,43 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               const SizedBox(height: Space.sm),
               Text(
-                'Costs you can deduct on Schedule C. Vehicle costs marked below cannot be claimed alongside the standard mileage rate.',
+                standardMileage
+                    ? 'Costs you can deduct on Schedule C, with your '
+                          '${summary.year} totals. Standard mileage is ahead '
+                          'this year, so the vehicle costs marked below are '
+                          'already covered by the rate and cannot be claimed '
+                          'on top of it.'
+                    : 'Costs you can deduct on Schedule C, with your '
+                          '${summary.year} totals. Your actual expenses are '
+                          'ahead this year, so the vehicle costs marked below '
+                          'are the ones being claimed — the standard mileage '
+                          'rate is the alternative, not an addition.',
                 style: Theme.of(context).textTheme.bodyMedium,
               ),
               const SizedBox(height: Space.lg),
               Expanded(
                 child: ListView.separated(
                   controller: scrollController,
-                  itemCount: ExpenseCategory.values.length,
+                  itemCount: ordered.length,
                   separatorBuilder: (_, _) => const SizedBox(height: Space.sm),
                   itemBuilder: (context, index) => _ExpenseCategoryCard(
-                    category: ExpenseCategory.values[index],
+                    category: ordered[index],
+                    amount: totals[ordered[index]] ?? 0,
+                    units: units,
+                    coveredByMileageRate:
+                        standardMileage && ordered[index].isVehicleCost,
                   ),
                 ),
+              ),
+              const SizedBox(height: Space.md),
+              FilledButton.icon(
+                key: const ValueKey('settings-open-taxes'),
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  widget.onOpenTaxes();
+                },
+                icon: const Icon(Icons.arrow_forward_rounded),
+                label: const Text('Manage expenses'),
               ),
             ],
           ),
@@ -471,17 +533,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
     required Key fieldKey,
     required String? Function(String) validator,
     TextCapitalization textCapitalization = TextCapitalization.none,
-  }) => showModalBottomSheet<String>(
+  }) => showTextEditorSheet(
     context: context,
-    isScrollControlled: true,
-    showDragHandle: true,
-    builder: (context) => _TextEditorSheet(
-      title: title,
-      initialValue: initialValue,
-      fieldKey: fieldKey,
-      validator: validator,
-      textCapitalization: textCapitalization,
-    ),
+    title: title,
+    initialValue: initialValue,
+    fieldKey: fieldKey,
+    validator: validator,
+    textCapitalization: textCapitalization,
   );
 
   Future<double?> _showNumberEditor({
@@ -493,20 +551,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
     required String rangeError,
     String? prefixText,
     String? suffixText,
-  }) => showModalBottomSheet<double>(
+  }) => showNumberEditorSheet(
     context: context,
-    isScrollControlled: true,
-    showDragHandle: true,
-    builder: (context) => _NumberEditorSheet(
-      title: title,
-      initialValue: initialValue,
-      fieldKey: fieldKey,
-      min: min,
-      max: max,
-      rangeError: rangeError,
-      prefixText: prefixText,
-      suffixText: suffixText,
-    ),
+    title: title,
+    initialValue: initialValue,
+    fieldKey: fieldKey,
+    min: min,
+    max: max,
+    rangeError: rangeError,
+    prefixText: prefixText,
+    suffixText: suffixText,
   );
 
   Future<T?> _showChoice<T>({
@@ -514,52 +568,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
     required T current,
     required List<T> values,
     required String Function(T) label,
-  }) => showModalBottomSheet<T>(
+  }) => showChoiceSheet<T>(
     context: context,
-    showDragHandle: true,
-    builder: (context) => SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.only(bottom: Space.lg),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                Space.xl,
-                Space.sm,
-                Space.xl,
-                Space.md,
-              ),
-              child: Text(title, style: Theme.of(context).textTheme.titleLarge),
-            ),
-            for (final value in values)
-              ListTile(
-                title: Text(label(value)),
-                trailing: value == current
-                    ? Icon(
-                        Icons.check_circle_rounded,
-                        color: Theme.of(context).colorScheme.primary,
-                      )
-                    : null,
-                onTap: () => Navigator.of(context).pop(value),
-              ),
-          ],
-        ),
-      ),
-    ),
+    title: title,
+    current: current,
+    values: values,
+    label: label,
   );
 
   static String _efficiencyUnit(EnergySource source) =>
       source == EnergySource.electric ? 'mi/kWh' : 'MPG';
 
-  static String _plain(double value) => value.toStringAsFixed(
-    value.truncateToDouble() == value
-        ? 0
-        : value < 1
-        ? 3
-        : 1,
-  );
+  static String _plain(double value) => plainNumber(value);
 }
 
 class _SettingsSection extends StatelessWidget {
@@ -677,19 +697,19 @@ class _SettingsTile extends StatelessWidget {
 }
 
 class _DrivingCostSummary extends StatelessWidget {
-  const _DrivingCostSummary({required this.costs, required this.unit});
+  const _DrivingCostSummary({required this.costs, required this.units});
 
   final DrivingCosts costs;
-  final DistanceUnit unit;
+  final MeasurementUnits units;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
-    final fuel = unit.rateFromPerMile(costs.fuelCostPerMile);
-    final vehicle = unit.rateFromPerMile(costs.vehicleCostPerMile);
-    final allIn = unit.rateFromPerMile(costs.allInCostPerMile);
-    final distance = unit == DistanceUnit.miles ? 'mile' : 'km';
+    final fuel = costs.fuelCostPerMile;
+    final vehicle = costs.vehicleCostPerMile;
+    final allIn = costs.allInCostPerMile;
+    final distance = units.distance.singular;
     final fuelSwatch = colors.primary;
     final vehicleSwatch = colors.primary.withValues(alpha: .38);
     return GlassSurface(
@@ -735,7 +755,7 @@ class _DrivingCostSummary extends StatelessWidget {
           ),
           Space.gapLg,
           Text(
-            Money.cents(allIn),
+            units.cents(allIn),
             style: theme.textTheme.headlineMedium?.copyWith(
               fontFeatures: tabularFigures,
             ),
@@ -763,7 +783,7 @@ class _DrivingCostSummary extends StatelessWidget {
                 Expanded(
                   child: _CostShare(
                     label: 'Fuel',
-                    amount: Money.cents(fuel),
+                    amount: units.cents(fuel),
                     share: allIn > 0 ? fuel / allIn : 0,
                     swatch: fuelSwatch,
                   ),
@@ -776,7 +796,7 @@ class _DrivingCostSummary extends StatelessWidget {
                 Expanded(
                   child: _CostShare(
                     label: 'Vehicle',
-                    amount: Money.cents(vehicle),
+                    amount: units.cents(vehicle),
                     share: allIn > 0 ? vehicle / allIn : 0,
                     swatch: vehicleSwatch,
                   ),
@@ -818,7 +838,10 @@ class _CostSplitBar extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             if (fuelFlex > 0)
-              Expanded(flex: fuelFlex, child: ColoredBox(color: fuelSwatch)),
+              Expanded(
+                flex: fuelFlex,
+                child: ColoredBox(color: fuelSwatch),
+              ),
             if (vehicleFlex > 0)
               Expanded(
                 flex: vehicleFlex,
@@ -904,16 +927,34 @@ class _CostShare extends StatelessWidget {
 }
 
 class _ExpenseCategoryCard extends StatelessWidget {
-  const _ExpenseCategoryCard({required this.category});
+  const _ExpenseCategoryCard({
+    required this.category,
+    required this.amount,
+    required this.units,
+    required this.coveredByMileageRate,
+  });
 
   final ExpenseCategory category;
 
+  /// What the driver has recorded under this category this year.
+  final double amount;
+  final MeasurementUnits units;
+
+  /// True when this is a vehicle cost *and* the standard mileage rate is
+  /// winning, so the amount is real but not separately claimable.
+  final bool coveredByMileageRate;
+
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final used = amount > 0;
     return Container(
       padding: const EdgeInsets.all(Space.md),
       decoration: BoxDecoration(
+        color: used
+            ? colors.surfaceContainerHighest.withValues(alpha: .35)
+            : null,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
@@ -924,208 +965,47 @@ class _ExpenseCategoryCard extends StatelessWidget {
               children: [
                 Text(
                   category.label,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  style: theme.textTheme.bodyMedium?.copyWith(
                     fontWeight: FontWeight.w700,
                   ),
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  category.scheduleCLine,
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodySmall?.copyWith(color: colors.onSurfaceVariant),
+                  coveredByMileageRate
+                      ? '${category.scheduleCLine} · covered by the mileage rate'
+                      : category.scheduleCLine,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: colors.onSurfaceVariant,
+                  ),
                 ),
               ],
             ),
           ),
-          if (category.isVehicleCost)
+          const SizedBox(width: Space.sm),
+          if (used)
+            Text(
+              units.cents(amount),
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w700,
+                // Struck through would be wrong — the money was spent. Muted
+                // says "counted, but not on top of the rate".
+                color: coveredByMileageRate
+                    ? colors.onSurfaceVariant
+                    : colors.onSurface,
+              ),
+            ),
+          if (category.isVehicleCost) ...[
+            const SizedBox(width: Space.sm),
             Icon(
               Icons.directions_car_rounded,
               size: 18,
-              color: colors.primary,
+              color: coveredByMileageRate
+                  ? colors.onSurfaceVariant
+                  : colors.primary,
             ),
+          ],
         ],
       ),
     );
   }
-}
-
-class _TextEditorSheet extends StatefulWidget {
-  const _TextEditorSheet({
-    required this.title,
-    required this.initialValue,
-    required this.fieldKey,
-    required this.validator,
-    required this.textCapitalization,
-  });
-
-  final String title;
-  final String initialValue;
-  final Key fieldKey;
-  final String? Function(String) validator;
-  final TextCapitalization textCapitalization;
-
-  @override
-  State<_TextEditorSheet> createState() => _TextEditorSheetState();
-}
-
-class _TextEditorSheetState extends State<_TextEditorSheet> {
-  late final TextEditingController _controller;
-  String? _errorText;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = TextEditingController(text: widget.initialValue);
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  void _submit() {
-    final error = widget.validator(_controller.text);
-    if (error != null) {
-      setState(() => _errorText = error);
-      return;
-    }
-    Navigator.of(context).pop(_controller.text);
-  }
-
-  @override
-  Widget build(BuildContext context) => _EditorSheet(
-    title: widget.title,
-    onDone: _submit,
-    child: TextField(
-      key: widget.fieldKey,
-      controller: _controller,
-      autofocus: true,
-      textCapitalization: widget.textCapitalization,
-      textInputAction: TextInputAction.done,
-      decoration: InputDecoration(
-        labelText: widget.title,
-        errorText: _errorText,
-      ),
-      onSubmitted: (_) => _submit(),
-    ),
-  );
-}
-
-class _NumberEditorSheet extends StatefulWidget {
-  const _NumberEditorSheet({
-    required this.title,
-    required this.initialValue,
-    required this.fieldKey,
-    required this.min,
-    required this.max,
-    required this.rangeError,
-    this.prefixText,
-    this.suffixText,
-  });
-
-  final String title;
-  final double initialValue;
-  final Key fieldKey;
-  final double min;
-  final double max;
-  final String rangeError;
-  final String? prefixText;
-  final String? suffixText;
-
-  @override
-  State<_NumberEditorSheet> createState() => _NumberEditorSheetState();
-}
-
-class _NumberEditorSheetState extends State<_NumberEditorSheet> {
-  late final TextEditingController _controller;
-  String? _errorText;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = TextEditingController(
-      text: _SettingsScreenState._plain(widget.initialValue),
-    );
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  void _submit() {
-    final value = double.tryParse(_controller.text.trim());
-    if (value == null ||
-        !value.isFinite ||
-        value < widget.min ||
-        value > widget.max) {
-      setState(() => _errorText = widget.rangeError);
-      return;
-    }
-    Navigator.of(context).pop(value);
-  }
-
-  @override
-  Widget build(BuildContext context) => _EditorSheet(
-    title: widget.title,
-    onDone: _submit,
-    child: TextField(
-      key: widget.fieldKey,
-      controller: _controller,
-      autofocus: true,
-      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-      textInputAction: TextInputAction.done,
-      decoration: InputDecoration(
-        labelText: widget.title,
-        prefixText: widget.prefixText,
-        suffixText: widget.suffixText,
-        errorText: _errorText,
-      ),
-      onSubmitted: (_) => _submit(),
-    ),
-  );
-}
-
-class _EditorSheet extends StatelessWidget {
-  const _EditorSheet({
-    required this.title,
-    required this.child,
-    required this.onDone,
-  });
-
-  final String title;
-  final Widget child;
-  final VoidCallback onDone;
-
-  @override
-  Widget build(BuildContext context) => SafeArea(
-    child: AnimatedPadding(
-      duration: const Duration(milliseconds: 180),
-      curve: Curves.easeOut,
-      padding: EdgeInsets.fromLTRB(
-        Space.xl,
-        Space.sm,
-        Space.xl,
-        MediaQuery.viewInsetsOf(context).bottom + Space.xl,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(title, style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: Space.lg),
-          child,
-          const SizedBox(height: Space.lg),
-          FilledButton(
-            key: const ValueKey('settings-editor-done'),
-            onPressed: onDone,
-            child: const Text('Done'),
-          ),
-        ],
-      ),
-    ),
-  );
 }

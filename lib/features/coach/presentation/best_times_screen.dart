@@ -176,4 +176,3 @@ class _PatternCard extends StatelessWidget {
     );
   }
 }
-

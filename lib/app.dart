@@ -18,7 +18,8 @@ import 'features/driving/domain/driving_session.dart';
 import 'features/onboarding/presentation/onboarding_screen.dart';
 import 'features/shifts/domain/shift.dart';
 import 'features/settings/domain/driving_costs.dart';
-import 'features/settings/domain/distance_unit.dart';
+import 'features/settings/domain/measurement_units.dart';
+import 'features/tax/domain/expense.dart';
 import 'features/today/presentation/app_shell.dart';
 
 class DriverWealthApp extends StatefulWidget {
@@ -76,6 +77,10 @@ class _DriverWealthAppState extends State<DriverWealthApp> {
   var _syncing = false;
   String? _driverName;
   final List<Shift> _shifts = [];
+
+  /// Costs that are not attached to one shift — a car payment, an insurance
+  /// premium, a phone bill. Held newest first, the way [_shifts] is.
+  final List<Expense> _expenses = [];
   double _dailyGoal = 250;
   double _vehicleCostPerMile = AppSnapshot.defaultVehicleCostPerMile;
   EnergySource _energySource = EnergySource.gasoline;
@@ -84,7 +89,6 @@ class _DriverWealthAppState extends State<DriverWealthApp> {
   double _hourlyFloor = AppSnapshot.defaultHourlyFloor;
   int _weekStartsOn = DateTime.monday;
   int _drivingDaysPerWeek = AppSnapshot.defaultDrivingDaysPerWeek;
-  DistanceUnit _distanceUnit = DistanceUnit.miles;
   ThemeMode _themeMode = ThemeMode.system;
   DrivingSession? _activeSession;
   Shift? _pendingDraft;
@@ -107,6 +111,8 @@ class _DriverWealthAppState extends State<DriverWealthApp> {
   DateTime? _syncCursor;
   final Set<String> _dirtyShiftIds = {};
   final Set<String> _deletedShiftIds = {};
+  final Set<String> _dirtyExpenseIds = {};
+  final Set<String> _deletedExpenseIds = {};
   var _dirtyPreferences = false;
   var _syncingRecords = false;
 
@@ -221,16 +227,20 @@ class _DriverWealthAppState extends State<DriverWealthApp> {
           : AppShell(
               driverName: _driverName!,
               shifts: _shifts,
+              expenses: _expenses,
               dailyGoal: _dailyGoal,
               vehicleCostPerMile: _vehicleCostPerMile,
               drivingCosts: _drivingCosts,
               hourlyFloor: _hourlyFloor,
               weekStartsOn: _weekStartsOn,
               drivingDaysPerWeek: _drivingDaysPerWeek,
-              distanceUnit: _distanceUnit,
+              units: const MeasurementUnits(),
               onShiftAdded: _addShift,
               onShiftUpdated: _updateShift,
               onShiftDeleted: _deleteShift,
+              onExpenseAdded: _addExpense,
+              onExpenseUpdated: _updateExpense,
+              onExpenseDeleted: _deleteExpense,
               onDailyGoalChanged: _changeDailyGoal,
               onVehicleCostPerMileChanged: _changeVehicleCostPerMile,
               onEnergySourceChanged: _changeEnergySource,
@@ -239,7 +249,6 @@ class _DriverWealthAppState extends State<DriverWealthApp> {
               onHourlyFloorChanged: _changeHourlyFloor,
               onWeekStartsOnChanged: _changeWeekStartsOn,
               onDrivingDaysPerWeekChanged: _changeDrivingDaysPerWeek,
-              onDistanceUnitChanged: _changeDistanceUnit,
               onDriverNameChanged: _changeDriverName,
               themeMode: _themeMode,
               onThemeModeChanged: _changeThemeMode,
@@ -252,7 +261,9 @@ class _DriverWealthAppState extends State<DriverWealthApp> {
               storageError: _storageError,
               accountEmail: _user?.email,
               onSignOut: _auth == null ? null : _signOut,
+              onDeleteAccount: _auth == null ? null : _deleteAccount,
               adminRepository: _adminAccess ? _admin : null,
+              clock: widget.clock,
             ),
     );
   }
@@ -276,17 +287,21 @@ class _DriverWealthAppState extends State<DriverWealthApp> {
       _hourlyFloor = snapshot.hourlyFloor;
       _weekStartsOn = snapshot.weekStartsOn;
       _drivingDaysPerWeek = snapshot.drivingDaysPerWeek;
-      _distanceUnit = snapshot.distanceUnit;
       _themeMode = snapshot.themeMode;
       _activeSession = snapshot.activeSession;
       _pendingDraft = snapshot.pendingDraft;
       _syncCursor = snapshot.syncCursor;
       _dirtyShiftIds.addAll(snapshot.dirtyShiftIds);
       _deletedShiftIds.addAll(snapshot.deletedShiftIds);
+      _dirtyExpenseIds.addAll(snapshot.dirtyExpenseIds);
+      _deletedExpenseIds.addAll(snapshot.deletedExpenseIds);
       _dirtyPreferences = snapshot.dirtyPreferences;
       _shifts
         ..clear()
         ..addAll(snapshot.shifts);
+      _expenses
+        ..clear()
+        ..addAll(snapshot.expenses);
       _loaded = true;
     });
     _createDrivingController();
@@ -313,6 +328,7 @@ class _DriverWealthAppState extends State<DriverWealthApp> {
     try {
       if (uploadEverything) {
         _dirtyShiftIds.addAll(_shifts.map((shift) => shift.id));
+        _dirtyExpenseIds.addAll(_expenses.map((expense) => expense.id));
         _dirtyPreferences = _dirtyPreferences || _driverName != null;
       }
 
@@ -348,18 +364,26 @@ class _DriverWealthAppState extends State<DriverWealthApp> {
       _hourlyFloor = snapshot.hourlyFloor;
       _weekStartsOn = snapshot.weekStartsOn;
       _drivingDaysPerWeek = snapshot.drivingDaysPerWeek;
-      _distanceUnit = snapshot.distanceUnit;
       _themeMode = snapshot.themeMode;
       _syncCursor = snapshot.syncCursor;
       _shifts
         ..clear()
         ..addAll(snapshot.shifts);
+      _expenses
+        ..clear()
+        ..addAll(snapshot.expenses);
       _dirtyShiftIds
         ..clear()
         ..addAll(snapshot.dirtyShiftIds);
       _deletedShiftIds
         ..clear()
         ..addAll(snapshot.deletedShiftIds);
+      _dirtyExpenseIds
+        ..clear()
+        ..addAll(snapshot.dirtyExpenseIds);
+      _deletedExpenseIds
+        ..clear()
+        ..addAll(snapshot.deletedExpenseIds);
       _dirtyPreferences = snapshot.dirtyPreferences;
     });
     _save();
@@ -481,34 +505,64 @@ class _DriverWealthAppState extends State<DriverWealthApp> {
     // of the old driver's state could land after the wipe.
     await _pendingSave;
     if (!mounted) return;
-    setState(() {
-      _driverName = null;
-      _shifts.clear();
-      _pendingDraft = null;
-      _activeSession = null;
-      _syncStatus = null;
-      _dailyGoal = 250;
-      _vehicleCostPerMile = AppSnapshot.defaultVehicleCostPerMile;
-      _energySource = EnergySource.gasoline;
-      _fuelEfficiency = DrivingCosts.defaultFuelEfficiency;
-      _fuelPrice = DrivingCosts.defaultFuelPrice;
-      _hourlyFloor = AppSnapshot.defaultHourlyFloor;
-      _weekStartsOn = DateTime.monday;
-      _drivingDaysPerWeek = AppSnapshot.defaultDrivingDaysPerWeek;
-      _distanceUnit = DistanceUnit.miles;
-      _themeMode = ThemeMode.system;
-      // The next account to sign in here starts from a clean slate: a leftover
-      // cursor would make its first pull skip everything already on the server.
-      _syncCursor = null;
-      _dirtyShiftIds.clear();
-      _deletedShiftIds.clear();
-      _dirtyPreferences = false;
-      _adminAccess = false;
-      // A name typed on the signup screen must not survive to be adopted by
-      // whoever signs in on this phone next.
-      _pendingSignUpName = null;
-    });
+    setState(_clearDeviceRecords);
     _save();
+  }
+
+  /// Permanently deletes the account, then clears this device.
+  ///
+  /// Deliberately does not flush pending changes the way [_signOut] does:
+  /// everything on the server is about to be destroyed, so pushing local edits
+  /// into it would be work done solely to delete them a moment later.
+  ///
+  /// Throws [AuthException] if the server refuses — an administrator cannot
+  /// delete their own account — and in that case nothing here is touched, so
+  /// the driver is left signed in with their records intact.
+  Future<void> _deleteAccount() async {
+    final gateway = _auth;
+    if (gateway == null) return;
+    await gateway.deleteAccount();
+    // Same reasoning as sign-out: let the in-flight write chain land before
+    // overwriting, or a queued save could resurrect the deleted driver's state.
+    await _pendingSave;
+    if (!mounted) return;
+    setState(_clearDeviceRecords);
+    _save();
+  }
+
+  /// Returns this device to the state a brand-new install is in.
+  ///
+  /// Shared by sign-out and account deletion because the device-side outcome is
+  /// identical — only the fate of the server copy differs — and letting the two
+  /// drift apart is how one of them ends up leaving a field behind.
+  void _clearDeviceRecords() {
+    _driverName = null;
+    _shifts.clear();
+    _expenses.clear();
+    _pendingDraft = null;
+    _activeSession = null;
+    _syncStatus = null;
+    _dailyGoal = 250;
+    _vehicleCostPerMile = AppSnapshot.defaultVehicleCostPerMile;
+    _energySource = EnergySource.gasoline;
+    _fuelEfficiency = DrivingCosts.defaultFuelEfficiency;
+    _fuelPrice = DrivingCosts.defaultFuelPrice;
+    _hourlyFloor = AppSnapshot.defaultHourlyFloor;
+    _weekStartsOn = DateTime.monday;
+    _drivingDaysPerWeek = AppSnapshot.defaultDrivingDaysPerWeek;
+    _themeMode = ThemeMode.system;
+    // The next account to sign in here starts from a clean slate: a leftover
+    // cursor would make its first pull skip everything already on the server.
+    _syncCursor = null;
+    _dirtyShiftIds.clear();
+    _deletedShiftIds.clear();
+    _dirtyExpenseIds.clear();
+    _deletedExpenseIds.clear();
+    _dirtyPreferences = false;
+    _adminAccess = false;
+    // A name typed on the signup screen must not survive to be adopted by
+    // whoever signs in on this phone next.
+    _pendingSignUpName = null;
   }
 
   Future<void> _refreshAdminAccess() async {
@@ -552,6 +606,51 @@ class _DriverWealthAppState extends State<DriverWealthApp> {
       // another device would bring the shift straight back.
       _deletedShiftIds.add(shiftId);
       _dirtyShiftIds.remove(shiftId);
+    });
+    _saveAndSync();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Standalone expenses.
+  //
+  // Deliberately the same three shapes as the shift methods above — same
+  // tombstone handling, same undelete-on-re-add. The two records live in
+  // different tables but follow one set of sync rules, and letting the pair
+  // drift apart is how one of them ends up losing a driver's data.
+  // ---------------------------------------------------------------------------
+
+  void _addExpense(Expense expense) {
+    if (_expenses.any((saved) => saved.id == expense.id)) return;
+    setState(() {
+      _expenses.add(expense);
+      _expenses.sort((a, b) => b.incurredOn.compareTo(a.incurredOn));
+      _dirtyExpenseIds.add(expense.id);
+      // Re-adding an id that was deleted elsewhere is an undelete.
+      _deletedExpenseIds.remove(expense.id);
+    });
+    _saveAndSync();
+  }
+
+  void _updateExpense(Expense expense) {
+    final index = _expenses.indexWhere((saved) => saved.id == expense.id);
+    if (index == -1) return;
+    setState(() {
+      _expenses[index] = expense;
+      _expenses.sort((a, b) => b.incurredOn.compareTo(a.incurredOn));
+      _dirtyExpenseIds.add(expense.id);
+    });
+    _saveAndSync();
+  }
+
+  void _deleteExpense(String expenseId) {
+    final present = _expenses.any((expense) => expense.id == expenseId);
+    if (!present) return;
+    setState(() {
+      _expenses.removeWhere((expense) => expense.id == expenseId);
+      // A tombstone, not just a local removal. Without it the next pull from
+      // another device would bring the expense straight back.
+      _deletedExpenseIds.add(expenseId);
+      _dirtyExpenseIds.remove(expenseId);
     });
     _saveAndSync();
   }
@@ -627,14 +726,6 @@ class _DriverWealthAppState extends State<DriverWealthApp> {
     _saveAndSync();
   }
 
-  void _changeDistanceUnit(DistanceUnit unit) {
-    setState(() {
-      _distanceUnit = unit;
-      _dirtyPreferences = true;
-    });
-    _saveAndSync();
-  }
-
   void _changeThemeMode(ThemeMode mode) {
     setState(() {
       _themeMode = mode;
@@ -663,14 +754,16 @@ class _DriverWealthAppState extends State<DriverWealthApp> {
     hourlyFloor: _hourlyFloor,
     weekStartsOn: _weekStartsOn,
     drivingDaysPerWeek: _drivingDaysPerWeek,
-    distanceUnit: _distanceUnit,
     themeMode: _themeMode,
     activeSession: _activeSession,
     shifts: List.unmodifiable(_shifts),
+    expenses: List.unmodifiable(_expenses),
     pendingDraft: _pendingDraft,
     syncCursor: _syncCursor,
     dirtyShiftIds: Set.unmodifiable(_dirtyShiftIds),
     deletedShiftIds: Set.unmodifiable(_deletedShiftIds),
+    dirtyExpenseIds: Set.unmodifiable(_dirtyExpenseIds),
+    deletedExpenseIds: Set.unmodifiable(_deletedExpenseIds),
     dirtyPreferences: _dirtyPreferences,
   );
 
@@ -713,4 +806,3 @@ class _DriverWealthAppState extends State<DriverWealthApp> {
         });
   }
 }
-

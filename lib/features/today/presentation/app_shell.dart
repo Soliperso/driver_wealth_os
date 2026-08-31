@@ -1,9 +1,7 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
-import 'package:share_plus/share_plus.dart';
 
 import '../../../core/config/backend_config.dart';
 import '../../../core/format/money.dart';
@@ -24,16 +22,15 @@ import '../../driving/presentation/location_disclosure_sheet.dart';
 import '../../history/presentation/history_screen.dart';
 import '../../history/presentation/shift_detail_screen.dart';
 import '../../settings/domain/driving_costs.dart';
-import '../../settings/domain/distance_unit.dart';
 import '../../settings/domain/driver_preferences.dart';
-// Prefixed: this file already imports the stored [DistanceUnit], and the
-// display-side enum in here carries the same name.
-import '../../settings/domain/measurement_units.dart' as display;
-import '../../settings/application/shift_export.dart';
+import '../../settings/domain/measurement_units.dart';
+import '../../settings/application/history_export.dart';
 import '../../settings/presentation/privacy_security_screen.dart';
 import '../../settings/presentation/settings_screen.dart';
 import '../../shifts/domain/shift.dart';
 import '../../shifts/presentation/add_shift_screen.dart';
+import '../../tax/domain/expense.dart';
+import '../../tax/presentation/tax_year_screen.dart';
 import 'today_screen.dart';
 
 class AppShell extends StatefulWidget {
@@ -41,13 +38,17 @@ class AppShell extends StatefulWidget {
     super.key,
     required this.driverName,
     required this.shifts,
+    required this.expenses,
+    required this.onExpenseAdded,
+    required this.onExpenseUpdated,
+    required this.onExpenseDeleted,
     required this.dailyGoal,
     required this.vehicleCostPerMile,
     required this.drivingCosts,
     required this.hourlyFloor,
     required this.weekStartsOn,
     required this.drivingDaysPerWeek,
-    required this.distanceUnit,
+    required this.units,
     required this.onShiftAdded,
     required this.onShiftUpdated,
     required this.onShiftDeleted,
@@ -59,7 +60,6 @@ class AppShell extends StatefulWidget {
     required this.onHourlyFloorChanged,
     required this.onWeekStartsOnChanged,
     required this.onDrivingDaysPerWeekChanged,
-    required this.onDistanceUnitChanged,
     required this.onDriverNameChanged,
     required this.themeMode,
     required this.onThemeModeChanged,
@@ -72,17 +72,30 @@ class AppShell extends StatefulWidget {
     this.storageError,
     this.accountEmail,
     this.onSignOut,
+    this.onDeleteAccount,
     this.adminRepository,
+    this.clock,
   });
+
+  /// Permanently destroys the account. Null in a local-only build, where there
+  /// is no account to destroy.
+  final Future<void> Function()? onDeleteAccount;
+
+  /// Injectable wall clock, passed down to the screens that anchor on "now".
+  final DateTime Function()? clock;
   final String driverName;
   final List<Shift> shifts;
+  final List<Expense> expenses;
+  final ValueChanged<Expense> onExpenseAdded;
+  final ValueChanged<Expense> onExpenseUpdated;
+  final ValueChanged<String> onExpenseDeleted;
   final double dailyGoal;
   final double vehicleCostPerMile;
   final DrivingCosts drivingCosts;
   final double hourlyFloor;
   final int weekStartsOn;
   final int drivingDaysPerWeek;
-  final DistanceUnit distanceUnit;
+  final MeasurementUnits units;
   final ValueChanged<Shift> onShiftAdded;
   final ValueChanged<Shift> onShiftUpdated;
   final ValueChanged<String> onShiftDeleted;
@@ -94,7 +107,6 @@ class AppShell extends StatefulWidget {
   final ValueChanged<double> onHourlyFloorChanged;
   final ValueChanged<int> onWeekStartsOnChanged;
   final ValueChanged<int> onDrivingDaysPerWeekChanged;
-  final ValueChanged<DistanceUnit> onDistanceUnitChanged;
   final ValueChanged<String> onDriverNameChanged;
   final ThemeMode themeMode;
   final ValueChanged<ThemeMode> onThemeModeChanged;
@@ -321,13 +333,12 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     if (mounted) setState(() {});
   }
 
-  /// The settings the shell already holds as loose fields, bundled into the
-  /// shape the newer screens ask for.
+  /// The settings the shell holds as loose fields, bundled into the shape the
+  /// screens ask for.
   ///
-  /// The shell itself still carries them one by one — migrating it, and every
-  /// callback hanging off it, is a separate job. Assembling here keeps that
-  /// churn out of [CoachScreen], which has no business knowing which of the two
-  /// shapes its parent happens to store.
+  /// The shell still carries them one by one, so this is where they are
+  /// reassembled. It no longer translates between two spellings of the same
+  /// enum: there is one [MeasurementUnits] now, and it arrives ready to use.
   DriverPreferences get _preferences => DriverPreferences(
     driverName: widget.driverName,
     dailyGoal: widget.dailyGoal,
@@ -335,15 +346,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     hourlyFloor: widget.hourlyFloor,
     weekStartsOn: widget.weekStartsOn,
     drivingDaysPerWeek: widget.drivingDaysPerWeek,
-    units: display.MeasurementUnits(
-      // Mapped case by case rather than by `name`: the stored enum spells it
-      // `kilometers` and the display enum `kilometres`, so matching on the
-      // name would silently fall back to miles for every metric driver.
-      distance: switch (widget.distanceUnit) {
-        DistanceUnit.miles => display.DistanceUnit.miles,
-        DistanceUnit.kilometers => display.DistanceUnit.kilometres,
-      },
-    ),
+    units: widget.units,
   );
 
   static const _destinations = [
@@ -359,11 +362,21 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       label: 'Coach',
     ),
     NavigationDestination(
+      icon: Icon(Icons.receipt_long_outlined),
+      selectedIcon: Icon(Icons.receipt_long_rounded),
+      label: 'Taxes',
+    ),
+    NavigationDestination(
       icon: Icon(Icons.settings_outlined),
       selectedIcon: Icon(Icons.settings_rounded),
       label: 'Settings',
     ),
   ];
+
+  /// Settings is the last tab, and adding one before it has moved this index
+  /// once already. Named so the next insertion cannot silently send the driver
+  /// to the wrong screen.
+  static const _settingsIndex = 4;
 
   @override
   Widget build(BuildContext context) {
@@ -377,7 +390,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         onDailyGoalChanged: widget.onDailyGoalChanged,
         onOpenShift: _openShift,
         onOpenHistory: () => setState(() => _index = 1),
-        onOpenSettings: () => setState(() => _index = 3),
+        onOpenSettings: () => setState(() => _index = _settingsIndex),
         onRefresh: widget.onRefreshEarnings,
         drivingSession: widget.drivingController?.session,
         drivingBackgroundLimited:
@@ -417,19 +430,34 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       ),
       1 => HistoryScreen(
         shifts: widget.shifts,
+        units: widget.units,
+        drivingCosts: widget.drivingCosts,
+        clock: widget.clock,
         onAddShift: () => _addShift(returnToToday: false),
         onShiftUpdated: widget.onShiftUpdated,
         onShiftDeleted: widget.onShiftDeleted,
       ),
       2 => CoachScreen(shifts: widget.shifts, preferences: _preferences),
+      3 => TaxYearScreen(
+        shifts: widget.shifts,
+        expenses: widget.expenses,
+        units: widget.units,
+        clock: widget.clock,
+        onExpenseAdded: widget.onExpenseAdded,
+        onExpenseUpdated: widget.onExpenseUpdated,
+        onExpenseDeleted: widget.onExpenseDeleted,
+      ),
       _ => SettingsScreen(
         driverName: widget.driverName,
+        shifts: widget.shifts,
+        expenses: widget.expenses,
+        onOpenTaxes: () => setState(() => _index = 3),
         dailyGoal: widget.dailyGoal,
         drivingCosts: widget.drivingCosts,
         hourlyFloor: widget.hourlyFloor,
         weekStartsOn: widget.weekStartsOn,
         drivingDaysPerWeek: widget.drivingDaysPerWeek,
-        distanceUnit: widget.distanceUnit,
+        units: widget.units,
         onDriverNameChanged: widget.onDriverNameChanged,
         onDailyGoalChanged: widget.onDailyGoalChanged,
         onVehicleCostPerMileChanged: widget.onVehicleCostPerMileChanged,
@@ -439,7 +467,6 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         onHourlyFloorChanged: widget.onHourlyFloorChanged,
         onWeekStartsOnChanged: widget.onWeekStartsOnChanged,
         onDrivingDaysPerWeekChanged: widget.onDrivingDaysPerWeekChanged,
-        onDistanceUnitChanged: widget.onDistanceUnitChanged,
         themeMode: widget.themeMode,
         onThemeModeChanged: widget.onThemeModeChanged,
         accountEmail: widget.accountEmail,
@@ -769,6 +796,8 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
           initialShift: draft,
           isNewFromSession: true,
           onSave: widget.onShiftAdded,
+          drivingCosts: widget.drivingCosts,
+          units: widget.units,
         ),
       ),
     );
@@ -837,6 +866,8 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       MaterialPageRoute(
         builder: (_) => ShiftDetailScreen(
           shift: shift,
+          units: widget.units,
+          drivingCosts: widget.drivingCosts,
           onUpdated: widget.onShiftUpdated,
           onDeleted: widget.onShiftDeleted,
         ),
@@ -849,7 +880,8 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       MaterialPageRoute(
         builder: (_) => AddShiftScreen(
           onSave: widget.onShiftAdded,
-          defaultVehicleCostPerMile: widget.vehicleCostPerMile,
+          drivingCosts: widget.drivingCosts,
+          units: widget.units,
         ),
       ),
     );
@@ -874,39 +906,30 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     await widget.onRefreshEarnings?.call();
   }
 
+  /// The whole history — every session and every standalone expense.
+  ///
+  /// The Taxes tab exports the same file scoped to one year; this is the
+  /// personal-backup end of the same feature, so it deliberately takes no year.
   Future<void> _exportData() async {
-    if (widget.shifts.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Add a session before exporting data.')),
-      );
-      return;
-    }
-    final now = DateTime.now();
-    final date =
-        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
-    final renderBox = context.findRenderObject();
-    final origin = renderBox is RenderBox
-        ? renderBox.localToGlobal(Offset.zero) & renderBox.size
-        : null;
-    await SharePlus.instance.share(
-      ShareParams(
-        subject: 'Driver Wealth driving data',
-        text: 'Your Driver Wealth session export.',
-        files: [
-          XFile.fromData(
-            utf8.encode(ShiftExport.csv(widget.shifts)),
-            mimeType: 'text/csv',
-          ),
-        ],
-        fileNameOverrides: ['driver-wealth-$date.csv'],
-        sharePositionOrigin: origin,
+    final exported = await HistoryExport(
+      units: widget.units,
+    ).share(widget.shifts, expenses: widget.expenses);
+    if (!mounted || exported) return;
+    // A driver with only expenses logged still has something to export, so the
+    // refusal is about having no records at all, not about having no sessions.
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Add a session or an expense before exporting data.'),
       ),
     );
   }
 
   Future<void> _openPrivacy() => Navigator.of(context).push(
     MaterialPageRoute(
-      builder: (_) => PrivacySecurityScreen(accountEmail: widget.accountEmail),
+      builder: (_) => PrivacySecurityScreen(
+        accountEmail: widget.accountEmail,
+        onDeleteAccount: widget.onDeleteAccount,
+      ),
     ),
   );
 }

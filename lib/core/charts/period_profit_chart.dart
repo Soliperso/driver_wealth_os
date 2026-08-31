@@ -256,22 +256,23 @@ class _PeriodProfitChartState extends State<PeriodProfitChart> {
                       alignment: Alignment.center,
                       child: i % widget.labelStride == 0
                           ? (widget.buckets[i].platform != null
-                              ? PlatformLogo(
-                                  platform: widget.buckets[i].platform!,
-                                  size: 14,
-                                )
-                              : Text(
-                                  widget.buckets[i].label,
-                                  textAlign: TextAlign.center,
-                                  maxLines: 1,
-                                  style: textTheme.labelSmall?.copyWith(
-                                    color: i == selected
-                                        ? colors.onSurface
-                                        : colors.onSurfaceVariant,
-                                    fontWeight:
-                                        i == selected ? FontWeight.w800 : null,
-                                  ),
-                                ))
+                                ? PlatformLogo(
+                                    platform: widget.buckets[i].platform!,
+                                    size: 14,
+                                  )
+                                : Text(
+                                    widget.buckets[i].label,
+                                    textAlign: TextAlign.center,
+                                    maxLines: 1,
+                                    style: textTheme.labelSmall?.copyWith(
+                                      color: i == selected
+                                          ? colors.onSurface
+                                          : colors.onSurfaceVariant,
+                                      fontWeight: i == selected
+                                          ? FontWeight.w800
+                                          : null,
+                                    ),
+                                  ))
                           : const SizedBox.shrink(),
                     ),
                   ),

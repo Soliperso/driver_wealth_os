@@ -907,10 +907,7 @@ class _PerformancePanel extends StatelessWidget {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const SectionCardTitle(
-          icon: Icons.speed_rounded,
-          title: 'Performance',
-        ),
+        const SectionCardTitle(icon: Icons.speed_rounded, title: 'Performance'),
         Space.gapLg,
         // The shared panel, as on Coach and History. This grid used to fence
         // each figure off from its neighbours with hairline rules and a
@@ -926,19 +923,15 @@ class _PerformancePanel extends StatelessWidget {
                 loss: false,
               ),
               (
-                // Named and converted per the driver's unit: a per-mile figure
-                // shown to a metric driver is wrong by 60%.
                 label: 'Net / ${units.distance.singular}',
-                value: netPerMile == null
-                    ? '—'
-                    : units.cents(units.rateFromPerMile(netPerMile!)),
+                value: netPerMile == null ? '—' : units.cents(netPerMile!),
                 loss: false,
               ),
             ],
             [
               (
                 label: units.distance.label,
-                value: units.distanceValue(miles).toStringAsFixed(1),
+                value: miles.toStringAsFixed(1),
                 loss: false,
               ),
               (label: 'Sessions', value: '$shiftCount', loss: false),

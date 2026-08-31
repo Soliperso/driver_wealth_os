@@ -18,10 +18,7 @@ class PlatformLogo extends StatelessWidget {
       width: size,
       height: size,
       alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: disc,
-        shape: BoxShape.circle,
-      ),
+      decoration: BoxDecoration(color: disc, shape: BoxShape.circle),
       child: _logo(context, _markColor(context, disc)),
     );
   }
@@ -32,9 +29,10 @@ class PlatformLogo extends StatelessWidget {
     // The only disc drawn from the scheme rather than a brand colour, so it
     // takes the scheme's matching foreground instead of a guess.
     WorkPlatform.other => Theme.of(context).colorScheme.onSecondaryContainer,
-    _ => ThemeData.estimateBrightnessForColor(disc) == Brightness.dark
-        ? Colors.white
-        : Colors.black,
+    _ =>
+      ThemeData.estimateBrightnessForColor(disc) == Brightness.dark
+          ? Colors.white
+          : Colors.black,
   };
 
   Color _backgroundColor(BuildContext context) => switch (platform) {
@@ -43,9 +41,10 @@ class PlatformLogo extends StatelessWidget {
     // hairline ring was the only thing separating the two near-blacks. In a
     // dark theme the brand's light lockup is both the higher-contrast and the
     // more faithful of the two; light theme keeps the black disc.
-    WorkPlatform.uber => Theme.of(context).brightness == Brightness.dark
-        ? const Color(0xFFFFFFFF)
-        : const Color(0xFF000000),
+    WorkPlatform.uber =>
+      Theme.of(context).brightness == Brightness.dark
+          ? const Color(0xFFFFFFFF)
+          : const Color(0xFF000000),
     // Uber Eats' own green, so it reads as a sibling brand rather than a
     // duplicate of the rides tile in a list showing both.
     WorkPlatform.uberEats => const Color(0xFF06C167),
@@ -108,6 +107,67 @@ class PlatformLogo extends StatelessWidget {
         size: markSize,
       ),
     };
+  }
+}
+
+/// The marks of every app a session ran, overlapped into one cluster.
+///
+/// A shift that ran Uber and Lyft was showing only the mark of whichever paid
+/// more, so a row in History could not be told apart from a single-app one.
+/// Overlapped rather than laid out in a line: a row has to stay scannable, and
+/// the cluster's width has to grow far more slowly than the number of apps.
+class PlatformLogoCluster extends StatelessWidget {
+  const PlatformLogoCluster({
+    super.key,
+    required this.platforms,
+    this.size = 34,
+    this.maxVisible = 3,
+  });
+
+  final List<WorkPlatform> platforms;
+  final double size;
+
+  /// Beyond this the cluster stops growing. Four overlapping discs at row size
+  /// are already indistinguishable, and the label spells out the count anyway.
+  final int maxVisible;
+
+  @override
+  Widget build(BuildContext context) {
+    final visible = platforms.take(maxVisible).toList();
+    if (visible.isEmpty) {
+      return PlatformLogo(platform: WorkPlatform.other, size: size);
+    }
+    if (visible.length == 1) {
+      return PlatformLogo(platform: visible.first, size: size);
+    }
+    // Each disc after the first shows a crescent of itself. The ring is the
+    // scheme's surface so a disc reads as in front of its neighbour rather
+    // than merged with it — two dark brand colours otherwise form one blob.
+    final step = size * .62;
+    final ring = size * .07;
+    return SizedBox(
+      width: step * (visible.length - 1) + size + ring * 2,
+      height: size + ring * 2,
+      child: Stack(
+        children: [
+          // Reversed so the first (highest-earning) app is painted last and
+          // therefore sits on top.
+          for (final (index, platform) in visible.indexed.toList().reversed)
+            Positioned(
+              left: step * index,
+              top: 0,
+              child: Container(
+                padding: EdgeInsets.all(ring),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surface,
+                  shape: BoxShape.circle,
+                ),
+                child: PlatformLogo(platform: platform, size: size),
+              ),
+            ),
+        ],
+      ),
+    );
   }
 }
 

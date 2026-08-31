@@ -77,10 +77,7 @@ void main() {
     await tester.tap(find.text('Save goal'));
     await tester.pumpAndSettle();
 
-    expect(
-      find.textContaining(r'to today’s $325 goal'),
-      findsOneWidget,
-    );
+    expect(find.textContaining(r'to today’s $325 goal'), findsOneWidget);
   });
 
   testWidgets('successful work account connection shows connected status', (

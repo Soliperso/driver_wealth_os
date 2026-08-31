@@ -5,6 +5,7 @@ import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/animated_money.dart';
 import '../../../core/widgets/metric_panel.dart';
 import '../../../core/widgets/soft_surfaces.dart';
+import '../../settings/domain/measurement_units.dart';
 import '../../shifts/domain/period_analytics.dart';
 import '../../shifts/domain/shift_summary.dart';
 
@@ -22,11 +23,13 @@ class PeriodHeroCard extends StatelessWidget {
     required this.now,
     required this.onPeriodChanged,
     required this.onStep,
+    this.units = const MeasurementUnits(),
   });
 
   final PeriodPerformance performance;
   final ReportPeriod period;
   final DateTime now;
+  final MeasurementUnits units;
   final ValueChanged<ReportPeriod> onPeriodChanged;
 
   /// −1 for the previous window, +1 for the next.
@@ -127,6 +130,7 @@ class PeriodHeroCard extends StatelessWidget {
                 alignment: Alignment.centerLeft,
                 child: AnimatedMoney(
                   value: summary.netProfit,
+                  units: units,
                   style: textTheme.headlineLarge?.copyWith(
                     fontWeight: FontWeight.w800,
                     fontFeatures: tabularFigures,
@@ -141,6 +145,7 @@ class PeriodHeroCard extends StatelessWidget {
                 delta: performance.netProfitDelta!,
                 change: performance.netProfitChange,
                 period: period,
+                units: units,
               ),
             ],
             Space.gapLg,
@@ -154,16 +159,16 @@ class PeriodHeroCard extends StatelessWidget {
                 [
                   (
                     label: 'Gross',
-                    value: Money.cents(summary.gross),
+                    value: units.cents(summary.gross),
                     loss: false,
                   ),
                   (
                     label: 'Costs',
-                    value: Money.cents(summary.totalExpenses),
+                    value: units.cents(summary.totalExpenses),
                     loss: false,
                   ),
                   (
-                    label: 'Miles',
+                    label: units.distance.label,
                     value: Money.compactNumber(summary.miles),
                     loss: false,
                   ),
@@ -176,14 +181,14 @@ class PeriodHeroCard extends StatelessWidget {
                     // unmeasurable one.
                     value: summary.hours == 0
                         ? '—'
-                        : Money.cents(summary.netPerHour),
+                        : units.cents(summary.netPerHour),
                     loss: lost,
                   ),
                   (
-                    label: 'Net / mi',
+                    label: 'Net / ${units.distance.symbol}',
                     value: summary.miles == 0
                         ? '—'
-                        : Money.cents(summary.netPerMile),
+                        : units.cents(summary.netPerMile),
                     loss: lost,
                   ),
                   (
@@ -289,11 +294,13 @@ class _TrendLine extends StatelessWidget {
     required this.delta,
     required this.change,
     required this.period,
+    required this.units,
   });
 
   final double delta;
   final double? change;
   final ReportPeriod period;
+  final MeasurementUnits units;
 
   @override
   Widget build(BuildContext context) {
@@ -326,7 +333,7 @@ class _TrendLine extends StatelessWidget {
           child: Text(
             flat
                 ? 'Level with ${_previousLabel(period)}'
-                : '${Money.signed(delta)}'
+                : '${units.signed(delta)}'
                       '${change == null ? '' : ' (${Money.percent(change!.abs())})'} '
                       'vs ${_previousLabel(period)}',
             maxLines: 1,

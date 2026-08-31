@@ -104,6 +104,30 @@ void main() {
     expect(merged.expenses.single.id, 'good');
   });
 
+  test('a numeric amount arriving as a string is still read', () {
+    // Postgres `numeric` comes over PostgREST as text, so this is the shape
+    // every genuine row actually has. Requiring a Dart num here silently
+    // dropped the driver's whole expense history while the fixtures above —
+    // which pass a double — went on passing.
+    final merged = mergePulledExpenses(const AppSnapshot(), [
+      {...row('a'), 'amount': '42.50'},
+    ]);
+
+    expect(merged.expenses.single.amount, 42.50);
+  });
+
+  test('an amount that cannot be read rejects the row', () {
+    // Not zero: an expense is only its amount, and a ¤0 record would put a
+    // false line on someone's tax return rather than an obviously missing one.
+    final merged = mergePulledExpenses(const AppSnapshot(), [
+      {...row('bad'), 'amount': 'not-a-number'},
+      {...row('negative'), 'amount': '-5'},
+      row('good'),
+    ]);
+
+    expect(merged.expenses.map((e) => e.id), ['good']);
+  });
+
   test('an unrecognised category decodes to other rather than failing', () {
     // The column is free text so the app can add a Schedule C line without a
     // migration; a device on an older build has to keep the record.

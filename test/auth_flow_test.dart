@@ -498,4 +498,174 @@ void main() {
     expect(find.byKey(const ValueKey('login-email-field')), findsNothing);
     expect(find.text('Hi, Ahmed!'), findsOneWidget);
   });
+
+  /// Opens Settings → Privacy & security on a signed-in app.
+  Future<void> openPrivacy(WidgetTester tester) async {
+    await tester.tap(find.byIcon(Icons.settings_outlined));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('settings-privacy-security')),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('settings-privacy-security')));
+    await tester.pumpAndSettle();
+  }
+
+  /// Scrolls the privacy list to the bottom, where the destructive card lives.
+  ///
+  /// A plain `ensureVisible` is not enough: the list is lazy, so a card below
+  /// the fold is not in the tree to be found at all.
+  Future<void> scrollPrivacyToEnd(WidgetTester tester) async {
+    for (var attempt = 0; attempt < 6; attempt++) {
+      await tester.drag(find.byType(Scrollable).first, const Offset(0, -400));
+      await tester.pumpAndSettle();
+    }
+  }
+
+  testWidgets('deleting an account clears the device and returns to sign-in', (
+    tester,
+  ) async {
+    final tracker = FakeLocationTracker();
+    addTearDown(tracker.dispose);
+    final gateway = FakeAuthGateway(
+      user: const AuthUser(id: 'user-1', email: 'driver@example.com'),
+    );
+    addTearDown(gateway.dispose);
+    final store = MemoryAppStore(
+      AppSnapshot(driverName: 'Ahmed', shifts: [shift('a')]),
+    );
+
+    await pumpApp(tester, store: store, gateway: gateway, tracker: tracker);
+    await openPrivacy(tester);
+    await scrollPrivacyToEnd(tester);
+    await press(tester, 'privacy-delete-account');
+
+    // The destructive button is inert until the word is typed, so a driver
+    // cannot delete their account by tapping twice in the same place.
+    final confirm = find.byKey(const ValueKey('confirm-delete-account'));
+    expect(tester.widget<FilledButton>(confirm).onPressed, isNull);
+
+    await tester.enterText(
+      find.byKey(const ValueKey('delete-account-confirm-field')),
+      'DELETE',
+    );
+    await tester.pumpAndSettle();
+    expect(tester.widget<FilledButton>(confirm).onPressed, isNotNull);
+
+    await tester.tap(confirm);
+    await tester.pumpAndSettle();
+
+    expect(gateway.deleteCount, 1);
+    // Back to the front door, with nothing of the deleted driver left behind.
+    expect(find.byKey(const ValueKey('login-email-field')), findsOneWidget);
+    expect(store.snapshot.shifts, isEmpty);
+    expect(store.snapshot.driverName, isNull);
+  });
+
+  testWidgets('a typo in the confirmation does not delete anything', (
+    tester,
+  ) async {
+    final tracker = FakeLocationTracker();
+    addTearDown(tracker.dispose);
+    final gateway = FakeAuthGateway(
+      user: const AuthUser(id: 'user-1', email: 'driver@example.com'),
+    );
+    addTearDown(gateway.dispose);
+    final store = MemoryAppStore(
+      AppSnapshot(driverName: 'Ahmed', shifts: [shift('a')]),
+    );
+
+    await pumpApp(tester, store: store, gateway: gateway, tracker: tracker);
+    await openPrivacy(tester);
+    await scrollPrivacyToEnd(tester);
+    await press(tester, 'privacy-delete-account');
+
+    await tester.enterText(
+      find.byKey(const ValueKey('delete-account-confirm-field')),
+      'delete my account',
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      tester
+          .widget<FilledButton>(
+            find.byKey(const ValueKey('confirm-delete-account')),
+          )
+          .onPressed,
+      isNull,
+    );
+    expect(gateway.deleteCount, 0);
+    expect(store.snapshot.shifts, hasLength(1));
+  });
+
+  testWidgets('a refused deletion leaves the driver signed in and says so', (
+    tester,
+  ) async {
+    final tracker = FakeLocationTracker();
+    addTearDown(tracker.dispose);
+    final gateway = FakeAuthGateway(
+      user: const AuthUser(id: 'owner-1', email: 'owner@example.com'),
+    );
+    // What the server does when an administrator tries to delete themselves:
+    // the control plane would be left with no admin and no way back in.
+    gateway.deleteFailure = const AuthException(
+      'An administrator account cannot be deleted from inside the app.',
+    );
+    addTearDown(gateway.dispose);
+    final store = MemoryAppStore(
+      AppSnapshot(driverName: 'Ahmed', shifts: [shift('a')]),
+    );
+
+    await pumpApp(tester, store: store, gateway: gateway, tracker: tracker);
+    await openPrivacy(tester);
+    await scrollPrivacyToEnd(tester);
+    await press(tester, 'privacy-delete-account');
+    await tester.enterText(
+      find.byKey(const ValueKey('delete-account-confirm-field')),
+      'DELETE',
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('confirm-delete-account')));
+    await tester.pumpAndSettle();
+
+    // The reason is shown, and nothing is destroyed on either side.
+    expect(
+      find.text(
+        'An administrator account cannot be deleted from inside the app.',
+      ),
+      findsOneWidget,
+    );
+    expect(gateway.deleteCount, 0);
+    expect(find.byKey(const ValueKey('login-email-field')), findsNothing);
+    expect(store.snapshot.shifts, hasLength(1));
+    expect(store.snapshot.driverName, 'Ahmed');
+  });
+
+  testWidgets('a local-only build offers no way to delete an account', (
+    tester,
+  ) async {
+    final tracker = FakeLocationTracker();
+    addTearDown(tracker.dispose);
+
+    await tester.pumpWidget(
+      DriverWealthApp(
+        store: MemoryAppStore(const AppSnapshot(driverName: 'Ahmed')),
+        locationTracker: tracker,
+        drivingRefreshInterval: null,
+      ),
+    );
+    await tester.pumpAndSettle();
+    await openPrivacy(tester);
+    // Scrolled to the end first, so this asserts the card is absent rather
+    // than merely unbuilt below the fold.
+    await scrollPrivacyToEnd(tester);
+
+    // There is no account to destroy, so offering to destroy one would be a
+    // button that could only ever fail.
+    expect(find.byKey(const ValueKey('privacy-delete-account')), findsNothing);
+    // The card above it is present, proving the list really did render.
+    expect(find.text('Location access'), findsOneWidget);
+  });
 }

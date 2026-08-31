@@ -5,6 +5,8 @@ import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/page_frame.dart';
 import '../../../core/widgets/soft_surfaces.dart';
 import '../../accounts/presentation/platform_logo.dart';
+import '../../settings/domain/driving_costs.dart';
+import '../../settings/domain/measurement_units.dart';
 import '../../shifts/domain/shift.dart';
 import '../../shifts/presentation/add_shift_screen.dart';
 
@@ -14,11 +16,18 @@ class ShiftDetailScreen extends StatefulWidget {
     required this.shift,
     required this.onUpdated,
     required this.onDeleted,
+    this.units = const MeasurementUnits(),
+    this.drivingCosts = const DrivingCosts(),
   });
 
   final Shift shift;
   final ValueChanged<Shift> onUpdated;
   final ValueChanged<String> onDeleted;
+  final MeasurementUnits units;
+
+  /// Carried only so the edit screen can price fuel; this screen shows what
+  /// the shift itself recorded, never today's rates.
+  final DrivingCosts drivingCosts;
 
   @override
   State<ShiftDetailScreen> createState() => _ShiftDetailScreenState();
@@ -30,6 +39,7 @@ class _ShiftDetailScreenState extends State<ShiftDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
+    final units = widget.units;
     // An unprofitable shift is the thing the driver most needs to notice, so
     // it must not share the reassuring tint of a profitable one.
     final isLoss = _shift.netProfit < 0;
@@ -55,7 +65,7 @@ class _ShiftDetailScreenState extends State<ShiftDetailScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          _shift.platform.displayName,
+                          _shift.platformLabel,
                           style: Theme.of(context).textTheme.titleLarge
                               ?.copyWith(fontWeight: FontWeight.w800),
                         ),
@@ -65,7 +75,7 @@ class _ShiftDetailScreenState extends State<ShiftDetailScreen> {
                           // duration, so this is where distance has to land.
                           '${_date(_shift.completedAt)} · '
                           '${Money.hours(_shift.hours)} · '
-                          '${_shift.miles.toStringAsFixed(0)} mi',
+                          '${units.distanceLabel(_shift.miles, decimals: 0)}',
                           style: Theme.of(context).textTheme.bodySmall,
                         ),
                       ],
@@ -80,7 +90,7 @@ class _ShiftDetailScreenState extends State<ShiftDetailScreen> {
                       ),
                       const SizedBox(height: 3),
                       Text(
-                        Money.cents(_shift.netProfit),
+                        units.cents(_shift.netProfit),
                         style: Theme.of(context).textTheme.titleLarge?.copyWith(
                           fontWeight: FontWeight.w900,
                         ),
@@ -103,16 +113,43 @@ class _ShiftDetailScreenState extends State<ShiftDetailScreen> {
                     ),
                   ),
                   const SizedBox(height: 14),
-                  _DetailRow(label: 'Gross earnings', value: _shift.gross),
+                  // One line per app, but only when there is more than one:
+                  // on a single-app shift the breakdown would just restate the
+                  // total under a different name.
+                  if (_shift.isMultiApp)
+                    for (final platform in _shift.platformsByEarnings)
+                      _DetailRow(
+                        key: ValueKey('detail-earnings-${platform.id}'),
+                        label: '${platform.displayName} earnings',
+                        value: _shift.earnedOn(platform),
+                        units: units,
+                        muted: true,
+                      ),
+                  _DetailRow(
+                    // Named as a total only once it is the sum of lines above.
+                    label: _shift.isMultiApp
+                        ? 'Gross earnings (total)'
+                        : 'Gross earnings',
+                    value: _shift.gross,
+                    units: units,
+                  ),
+                  // Costs stay whole. They were spent once, by one car, and
+                  // splitting them per app would invent a number nobody knows.
                   _DetailRow(
                     label: 'Fuel, tolls & parking',
                     value: -_shift.directExpenses,
+                    units: units,
                   ),
-                  _DetailRow(label: 'Vehicle wear', value: -_shift.vehicleCost),
+                  _DetailRow(
+                    label: 'Vehicle wear',
+                    value: -_shift.vehicleCost,
+                    units: units,
+                  ),
                   const Divider(height: 24),
                   _DetailRow(
                     label: 'True profit',
                     value: _shift.netProfit,
+                    units: units,
                     emphasized: true,
                   ),
                 ],
@@ -126,13 +163,13 @@ class _ShiftDetailScreenState extends State<ShiftDetailScreen> {
                   Expanded(
                     child: _SmallMetric(
                       label: 'Net / hour',
-                      value: Money.cents(_shift.netPerHour),
+                      value: units.cents(_shift.netPerHour),
                     ),
                   ),
                   Expanded(
                     child: _SmallMetric(
-                      label: 'Net / mile',
-                      value: Money.cents(_shift.netPerMile),
+                      label: 'Net / ${units.distance.singular}',
+                      value: units.cents(_shift.netPerMile),
                     ),
                   ),
                   Expanded(
@@ -166,6 +203,8 @@ class _ShiftDetailScreenState extends State<ShiftDetailScreen> {
       MaterialPageRoute(
         builder: (_) => AddShiftScreen(
           initialShift: _shift,
+          units: widget.units,
+          drivingCosts: widget.drivingCosts,
           onSave: (updated) {
             widget.onUpdated(updated);
             if (mounted) setState(() => _shift = updated);
@@ -216,21 +255,34 @@ class _ShiftDetailScreenState extends State<ShiftDetailScreen> {
 
 class _DetailRow extends StatelessWidget {
   const _DetailRow({
+    super.key,
     required this.label,
     required this.value,
+    required this.units,
     this.emphasized = false,
+    this.muted = false,
   });
 
   final String label;
   final double value;
+  final MeasurementUnits units;
   final bool emphasized;
+
+  /// A contributing line rather than a figure in its own right — the per-app
+  /// earnings that add up to the gross directly beneath them.
+  final bool muted;
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     final style = emphasized
         ? Theme.of(
             context,
           ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800)
+        : muted
+        ? Theme.of(
+            context,
+          ).textTheme.bodySmall?.copyWith(color: colors.onSurfaceVariant)
         : Theme.of(context).textTheme.bodyMedium;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: Space.xs),
@@ -238,7 +290,7 @@ class _DetailRow extends StatelessWidget {
         children: [
           Expanded(child: Text(label, style: style)),
           Text(
-            value < 0 ? Money.negated(value) : Money.cents(value),
+            value < 0 ? units.negated(value) : units.cents(value),
             style: style?.copyWith(fontFeatures: tabularFigures),
           ),
         ],

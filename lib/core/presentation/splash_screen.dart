@@ -1,10 +1,7 @@
 import 'package:flutter/material.dart';
 
 class SplashScreen extends StatefulWidget {
-  const SplashScreen({
-    super.key,
-    this.message = 'Loading...',
-  });
+  const SplashScreen({super.key, this.message = 'Loading...'});
 
   final String message;
 
@@ -25,9 +22,10 @@ class _SplashScreenState extends State<SplashScreen>
       vsync: this,
     )..forward();
 
-    _progress = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
-    );
+    _progress = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
   }
 
   @override
@@ -98,7 +96,9 @@ class _SplashScreenState extends State<SplashScreen>
                           value: _progress.value,
                           minHeight: 6,
                           backgroundColor: Colors.white.withValues(alpha: 0.2),
-                          valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+                          valueColor: const AlwaysStoppedAnimation<Color>(
+                            Colors.white,
+                          ),
                         );
                       },
                     ),

@@ -69,6 +69,14 @@ abstract interface class AuthGateway {
   /// Sets a new password on the currently signed-in account.
   Future<void> updatePassword(String password);
 
+  /// Permanently deletes the signed-in account and every record under it.
+  ///
+  /// Required by both stores: an app that lets someone create an account has to
+  /// let them destroy it from inside the app. The server does the cascade; this
+  /// also ends the session, because a token outliving the row it identifies
+  /// would leave the app signed in as a user that no longer exists.
+  Future<void> deleteAccount();
+
   Future<void> signOut();
 }
 
@@ -87,16 +95,18 @@ final class SupabaseAuthGateway implements AuthGateway {
   );
 
   @override
-  Future<AuthUser> signIn({
-    required String email,
-    required String password,
-  }) => _guard(() async {
-    final response = await _client.auth.signInWithPassword(
-      email: email,
-      password: password,
-    );
-    return _require(response.session?.user, 'We could not sign you in.');
-  }, 'We could not sign you in. Check your connection and try again.', rejected: 'That email and password do not match an account.');
+  Future<AuthUser> signIn({required String email, required String password}) =>
+      _guard(
+        () async {
+          final response = await _client.auth.signInWithPassword(
+            email: email,
+            password: password,
+          );
+          return _require(response.session?.user, 'We could not sign you in.');
+        },
+        'We could not sign you in. Check your connection and try again.',
+        rejected: 'That email and password do not match an account.',
+      );
 
   @override
   Future<AuthUser> signUp({
@@ -132,20 +142,22 @@ final class SupabaseAuthGateway implements AuthGateway {
   }, 'We could not send your code. Check your connection and try again.');
 
   @override
-  Future<AuthUser> verifyCode({
-    required String email,
-    required String code,
-  }) => _guard(() async {
-    final response = await _client.auth.verifyOTP(
-      email: email,
-      token: code,
-      type: OtpType.email,
-    );
-    return _require(
-      response.session?.user,
-      'That code did not work. Try again.',
-    );
-  }, 'We could not verify your code. Check your connection and try again.', rejected: 'That code has expired or is incorrect. Request a new one.');
+  Future<AuthUser> verifyCode({required String email, required String code}) =>
+      _guard(
+        () async {
+          final response = await _client.auth.verifyOTP(
+            email: email,
+            token: code,
+            type: OtpType.email,
+          );
+          return _require(
+            response.session?.user,
+            'That code did not work. Try again.',
+          );
+        },
+        'We could not verify your code. Check your connection and try again.',
+        rejected: 'That code has expired or is incorrect. Request a new one.',
+      );
 
   @override
   Future<void> sendPasswordReset(String email) => _guard(() async {
@@ -156,22 +168,58 @@ final class SupabaseAuthGateway implements AuthGateway {
   Future<AuthUser> verifyPasswordReset({
     required String email,
     required String code,
-  }) => _guard(() async {
-    final response = await _client.auth.verifyOTP(
-      email: email,
-      token: code,
-      type: OtpType.recovery,
-    );
-    return _require(
-      response.session?.user,
-      'That reset code did not work. Request a new one.',
-    );
-  }, 'We could not check your reset code. Check your connection and try again.', rejected: 'That reset code has expired or is incorrect. Request a new one.');
+  }) => _guard(
+    () async {
+      final response = await _client.auth.verifyOTP(
+        email: email,
+        token: code,
+        type: OtpType.recovery,
+      );
+      return _require(
+        response.session?.user,
+        'That reset code did not work. Request a new one.',
+      );
+    },
+    'We could not check your reset code. Check your connection and try again.',
+    rejected: 'That reset code has expired or is incorrect. Request a new one.',
+  );
 
   @override
-  Future<void> updatePassword(String password) => _guard(() async {
-    await _client.auth.updateUser(UserAttributes(password: password));
-  }, 'We could not save your new password. Check your connection and try again.');
+  Future<void> updatePassword(String password) => _guard(
+    () async {
+      await _client.auth.updateUser(UserAttributes(password: password));
+    },
+    'We could not save your new password. Check your connection and try again.',
+  );
+
+  @override
+  Future<void> deleteAccount() async {
+    try {
+      // Identified by `auth.uid()`, so this has to run while the session is
+      // still live — signing out first would leave the function with no caller.
+      await _client.rpc('delete_my_account');
+    } on PostgrestException catch (error) {
+      throw AuthException(_readableDeletion(error));
+    } catch (_) {
+      throw const AuthException(
+        'We could not delete your account. Check your connection and try '
+        'again.',
+      );
+    }
+    // Only once the row is gone. Every request this token could still make
+    // would now fail, and the app has to fall back to the sign-in screen.
+    await _client.auth.signOut();
+  }
+
+  /// The server refuses one deletion on purpose: an administrator removing
+  /// themselves would leave the control plane with no admin and no route back
+  /// in except the service role. That is worth saying plainly rather than
+  /// reporting as a connection problem.
+  static String _readableDeletion(PostgrestException error) =>
+      error.message.toLowerCase().contains('administrator')
+      ? 'An administrator account cannot be deleted from inside the app.'
+      : 'We could not delete your account. Check your connection and try '
+            'again.';
 
   @override
   Future<void> signOut() => _client.auth.signOut();
@@ -213,16 +261,12 @@ final class SupabaseAuthGateway implements AuthGateway {
   /// attempted. The provider reports a wrong password and a wrong one-time
   /// code with the same codes, so only the caller knows which of the two the
   /// driver just typed.
-  static String _readable(
-    AuthApiException error, {
-    required String rejected,
-  }) {
+  static String _readable(AuthApiException error, {required String rejected}) {
     final code = error.code ?? '';
     if (code.contains('invalid_credentials') || code.contains('otp_expired')) {
       return rejected;
     }
-    if (code.contains('user_already_exists') ||
-        code.contains('email_exists')) {
+    if (code.contains('user_already_exists') || code.contains('email_exists')) {
       return 'That email already has an account. Sign in instead.';
     }
     if (code.contains('weak_password')) {

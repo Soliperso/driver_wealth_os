@@ -31,9 +31,14 @@ class FakeAuthGateway implements AuthGateway {
   /// rejections that only the backend can decide.
   AuthException? signUpFailure;
 
+  /// When set, [deleteAccount] throws it — the one refusal the real server
+  /// makes on purpose is an administrator deleting themselves.
+  AuthException? deleteFailure;
+
   var sentTo = <String>[];
   var resetsSentTo = <String>[];
   var signOutCount = 0;
+  var deleteCount = 0;
 
   /// The name [signUp] was given, so a test can prove it reaches the app
   /// rather than being asked for a second time.
@@ -123,6 +128,18 @@ class FakeAuthGateway implements AuthGateway {
       throw const AuthException('Sign in before changing your password.');
     }
     passwords[email] = password;
+  }
+
+  @override
+  Future<void> deleteAccount() async {
+    final failure = deleteFailure;
+    // Thrown before anything is touched, mirroring the real gateway: a refused
+    // deletion must leave the driver signed in with their records intact.
+    if (failure != null) throw failure;
+    deleteCount++;
+    passwords.remove(user?.email);
+    user = null;
+    _controller.add(null);
   }
 
   @override
