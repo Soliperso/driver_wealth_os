@@ -159,8 +159,11 @@ class ShiftControl extends StatelessWidget {
   }
 }
 
-/// The bezel. Modelled on `_GoalRingPainter` so the two rings in the app agree
-/// on where zero is and which way round they run.
+/// The bezel, and now the app's only ring.
+///
+/// It inherited its geometry from the Freedom goal's ring, which was deleted
+/// with that feature; the convention is kept here so a second ring, if one is
+/// ever added, has something to agree with.
 class _ShiftRingPainter extends CustomPainter {
   _ShiftRingPainter({
     required this.progress,
@@ -195,7 +198,7 @@ class _ShiftRingPainter extends CustomPainter {
     );
 
     if (progress <= 0) return;
-    // Twelve o'clock, clockwise, matching GoalRing.
+    // Twelve o'clock, clockwise.
     canvas.drawArc(
       arcRect,
       -math.pi / 2,

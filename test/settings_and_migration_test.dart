@@ -158,6 +158,46 @@ void main() {
     expect(store.snapshot.driverName, 'Ahmed');
   });
 
+  testWidgets('appearance can be chosen, and the choice is persisted', (
+    tester,
+  ) async {
+    // Both themes were fully defined, persisted and synced, with nothing in
+    // the app to set them: `onThemeModeChanged` was threaded end to end and
+    // never invoked, so dark mode was reachable only by changing the OS.
+    final store = MemoryAppStore(const AppSnapshot(driverName: 'Ahmed'));
+    await tester.pumpWidget(DriverWealthApp(store: store));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Settings'));
+    await tester.pumpAndSettle();
+
+    final tile = find.byKey(const ValueKey('settings-theme-mode'));
+    await tester.scrollUntilVisible(
+      tile,
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await Scrollable.ensureVisible(tester.element(tile), alignment: .5);
+    await tester.pumpAndSettle();
+    // The default is "match device", not a hard-coded light.
+    expect(
+      find.descendant(of: tile, matching: find.text('Match device')),
+      findsOneWidget,
+    );
+
+    await tester.tap(tile);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Dark').last);
+    await tester.pumpAndSettle();
+
+    expect(store.snapshot.themeMode, ThemeMode.dark);
+    expect(
+      tester.widget<MaterialApp>(find.byType(MaterialApp)).themeMode,
+      ThemeMode.dark,
+      reason: 'the app has to actually repaint, not just record the choice',
+    );
+  });
+
   testWidgets('a new shift is seeded with the saved vehicle rate', (
     tester,
   ) async {

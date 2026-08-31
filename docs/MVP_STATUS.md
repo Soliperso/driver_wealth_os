@@ -19,6 +19,7 @@ The app remains driver-facing financial software. It does not match riders, disp
 | 6 — Money Leaks v1 | Detect negative profit, weak hourly performance, and low keep rate | Complete | One highest-value leak per shift, preventing duplicate recovery totals |
 | 7 — Backend | Hosted auth/data/sync foundation | Foundation complete; activation external | Supabase migrations and Edge Functions exist. Live account import requires provider credentials and enabled runtime configuration. |
 | 8 — Coach | One prioritized recommendation backed by calculated data | Complete for MVP | Deterministic local Profit Coach using goals, weekly performance, patterns, and leaks. No fabricated AI responses. |
+| 9 — Taxes & expenses | Costs that are not attached to a shift, categorised for Schedule C, and the vehicle-deduction comparison | Complete | `features/tax`; Taxes tab, expense editor, `TaxYearSummary` and `TaxQuarters`, with expense sync and a combined CSV export. |
 
 ## How a shift is captured
 
@@ -39,6 +40,30 @@ measured by the phone; only the money is supplied by the driver.
 
 Manual shift entry remains available as a first-class fallback for drivers who would rather not be
 tracked, or who are logging a shift they already finished.
+
+## The tax year
+
+A gig driver's vehicle deduction is a choice between two methods the IRS treats
+as alternatives, not additions: business miles at the published standard rate, or
+the real cost of running the car. Most drivers do not know the two are exclusive,
+let alone which way round it falls for their vehicle. The app already measures
+both inputs, so it makes the comparison and marks the larger one.
+
+- Miles are priced at the rate in force on each shift's own day, so a year the
+  IRS changed mid-year accumulates across both bands rather than using a blended
+  figure. Driving in a period with no published rate is surfaced as provisional
+  rather than silently dropped.
+- Expenses carry the Schedule C line they roll up to, and a flag for whether they
+  are part of running the car. That flag is what decides the comparison: the
+  standard rate already covers fuel, maintenance, insurance and depreciation, so
+  a driver claiming it cannot also claim those.
+- The estimated-tax figure is framed as "set aside", never as "you owe". The real
+  number depends on filing status, other income, a spouse's withholding and the
+  QBI deduction, none of which the app asks for. Nothing here is tax advice and
+  nothing is filed.
+- Receipt images are deliberately not uploaded. A receipt can carry a card number
+  and a home address; the path syncs so a record knows it has one, the image
+  stays on the device that took it.
 
 ## Calculation methodology
 
@@ -75,4 +100,19 @@ flutter analyze
 flutter test
 ```
 
-The automated suite covers calculation accuracy, rounding, duplicate prevention, persistence, daily-goal states, platform coverage, history operations, weekly analytics, Earnings DNA, Money Leaks, and Coach behavior.
+The automated suite covers calculation accuracy, rounding, duplicate prevention,
+persistence, daily-goal states, platform coverage, history operations, weekly
+analytics, Earnings DNA, Money Leaks, Coach behavior, expense sync precedence,
+the tax-year comparison, and the CSV export.
+
+It is **fully green** — 275 passing, 3 skipped, 0 failing. The skipped tests are
+the visual-golden and tooling suites, which are tagged and run on request:
+
+```sh
+flutter test --tags=visual --run-skipped
+```
+
+For a long stretch the suite sat at eight failures that were specifications for
+features nobody had built yet, which trained everyone to read red as normal. That
+is how a navigation tile stayed accidentally commented out for days. A failing
+test now means a regression.

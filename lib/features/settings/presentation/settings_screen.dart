@@ -200,6 +200,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   value: units.whole(_recordedExpenses),
                   onTap: _showExpenseCategories,
                 ),
+                _SettingsTile(
+                  key: const ValueKey('settings-theme-mode'),
+                  icon: _themeIcon(widget.themeMode),
+                  title: 'Appearance',
+                  value: _themeLabel(widget.themeMode),
+                  onTap: _chooseThemeMode,
+                ),
               ],
             ),
             const SizedBox(height: Space.xl),
@@ -359,6 +366,34 @@ class _SettingsScreenState extends State<SettingsScreen> {
       widget.onEnergySourceChanged(selected);
     }
   }
+
+  /// Both themes were fully defined, persisted and synced, and there was no
+  /// way to pick one: a driver could only get dark mode by changing their OS
+  /// setting. "System" stays the default, so nothing changes for anyone who
+  /// never opens this.
+  Future<void> _chooseThemeMode() async {
+    final selected = await _showChoice<ThemeMode>(
+      title: 'Appearance',
+      current: widget.themeMode,
+      values: ThemeMode.values,
+      label: _themeLabel,
+    );
+    if (selected != null && selected != widget.themeMode) {
+      widget.onThemeModeChanged(selected);
+    }
+  }
+
+  static String _themeLabel(ThemeMode mode) => switch (mode) {
+    ThemeMode.system => 'Match device',
+    ThemeMode.light => 'Light',
+    ThemeMode.dark => 'Dark',
+  };
+
+  static IconData _themeIcon(ThemeMode mode) => switch (mode) {
+    ThemeMode.system => Icons.brightness_auto_outlined,
+    ThemeMode.light => Icons.light_mode_outlined,
+    ThemeMode.dark => Icons.dark_mode_outlined,
+  };
 
   Future<void> _chooseWeekStart() async {
     final selected = await _showChoice<int>(

@@ -8,12 +8,19 @@ A polished Flutter MVP that helps rideshare drivers understand true profit witho
 - Editable daily profit goal
 - Persistent shift history with detail, edit, and delete
 - Weekly performance and relative Earnings DNA grades
-- One persistent Freedom goal tied to positive true profit
+- Platform comparison, with shared multi-app sessions reported separately
 - Money Leak detection that never counts one shift twice
 - A deterministic, data-backed Profit Coach
+- Standalone business expenses by Schedule C category, and a tax year that
+  compares the standard mileage rate against actual vehicle expenses
+- CSV export of every session and expense, all-time or for one tax year
 - Connect work accounts → secure Argyle Link session → normalized earnings sync scaffolding
 
-The calculation includes direct expenses plus a configurable vehicle cost per mile, then reports net profit, net per hour, net per mile, and keep rate.
+A shift's profit is gross earnings less direct expenses and a configurable
+vehicle cost per mile, reported as net profit, net per hour, net per mile, and
+keep rate. Costs that belong to the business rather than to one shift — a car
+payment, an insurance premium, a phone bill — are recorded separately and roll
+up into the tax year.
 
 ## Architecture
 
@@ -21,7 +28,7 @@ The calculation includes direct expenses plus a configurable vehicle cost per mi
 - Vertical slices with domain logic outside widgets
 - Responsive Material 3 interface
 - Bottom navigation below 800 px and navigation rail on larger screens
-- Light and dark themes
+- Light and dark themes, selectable in Settings and defaulting to the device
 - Hosted Supabase schema with row-level security
 - Supabase Edge Functions for connection sessions, earnings sync, and signed webhooks
 - Argyle Link Flutter SDK with secrets kept on the backend
