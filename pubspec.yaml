@@ -46,6 +46,7 @@ dependencies:
   # Direct dependency of the CSV history export. It resolved transitively via
   # share_plus, which meant a share_plus bump could have taken it away.
   path_provider: ^2.1.6
+  image_picker: ^1.2.3
 dev_dependencies:
   flutter_test:
     sdk: flutter

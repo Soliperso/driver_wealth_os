@@ -11,8 +11,9 @@ A polished Flutter MVP that helps rideshare drivers understand true profit witho
 - Platform comparison, with shared multi-app sessions reported separately
 - Money Leak detection that never counts one shift twice
 - A deterministic, data-backed Profit Coach
-- Standalone business expenses by Schedule C category, and a tax year that
-  compares the standard mileage rate against actual vehicle expenses
+- Standalone business expenses by Schedule C category, with receipt photos that
+  never leave the device, and a tax year that compares the standard mileage rate
+  against actual vehicle expenses
 - CSV export of every session and expense, all-time or for one tax year
 - Connect work accounts → secure Argyle Link session → normalized earnings sync scaffolding
 

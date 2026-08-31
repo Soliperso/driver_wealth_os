@@ -19,6 +19,7 @@ import 'features/onboarding/presentation/onboarding_screen.dart';
 import 'features/shifts/domain/shift.dart';
 import 'features/settings/domain/driving_costs.dart';
 import 'features/settings/domain/measurement_units.dart';
+import 'features/tax/application/receipt_store.dart';
 import 'features/tax/domain/expense.dart';
 import 'features/today/presentation/app_shell.dart';
 
@@ -33,7 +34,12 @@ class DriverWealthApp extends StatefulWidget {
     this.authGateway,
     this.syncService,
     this.adminRepository,
+    this.receiptStore,
   });
+
+  /// Injectable so tests can drive receipt capture without a camera, and so a
+  /// test never writes an image into the real documents directory.
+  final ReceiptStore? receiptStore;
 
   /// Injectable so the sync rules can be tested without a backend.
   final SyncService? syncService;
@@ -107,6 +113,9 @@ class _DriverWealthAppState extends State<DriverWealthApp> {
   AdminRepository? _admin;
   var _adminAccess = false;
 
+  /// Removes a receipt photo when the record that owned it goes away.
+  late final ReceiptStore _receipts;
+
   late final SyncService _sync;
   DateTime? _syncCursor;
   final Set<String> _dirtyShiftIds = {};
@@ -125,6 +134,7 @@ class _DriverWealthAppState extends State<DriverWealthApp> {
   void initState() {
     super.initState();
     _store = widget.store ?? MemoryAppStore();
+    _receipts = widget.receiptStore ?? DeviceReceiptStore();
     // Only a configured build has anything to sign in to. Without a backend
     // the app is local-only, and demanding an account for storage that never
     // leaves the device would be theatre.
@@ -264,6 +274,7 @@ class _DriverWealthAppState extends State<DriverWealthApp> {
               onDeleteAccount: _auth == null ? null : _deleteAccount,
               adminRepository: _adminAccess ? _admin : null,
               clock: widget.clock,
+              receiptStore: _receipts,
             ),
     );
   }
@@ -643,8 +654,12 @@ class _DriverWealthAppState extends State<DriverWealthApp> {
   }
 
   void _deleteExpense(String expenseId) {
-    final present = _expenses.any((expense) => expense.id == expenseId);
-    if (!present) return;
+    final index = _expenses.indexWhere((expense) => expense.id == expenseId);
+    if (index == -1) return;
+    // The photo goes with the record. It never left this device, so nothing
+    // else is holding a copy and leaving it behind would strand a picture of
+    // someone's card number in the documents directory indefinitely.
+    unawaited(_receipts.discard(_expenses[index].receiptPath));
     setState(() {
       _expenses.removeWhere((expense) => expense.id == expenseId);
       // A tombstone, not just a local removal. Without it the next pull from

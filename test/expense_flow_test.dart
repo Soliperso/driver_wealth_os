@@ -4,12 +4,35 @@ import 'package:driver_wealth_os/core/sync/sync_service.dart';
 import 'package:driver_wealth_os/features/accounts/domain/work_platform.dart';
 import 'package:driver_wealth_os/features/auth/domain/auth_user.dart';
 import 'package:driver_wealth_os/features/shifts/domain/shift.dart';
+import 'package:driver_wealth_os/features/tax/application/receipt_store.dart';
 import 'package:driver_wealth_os/features/tax/domain/expense.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/fake_auth_gateway.dart';
 import 'support/fake_location_tracker.dart';
+
+/// Stands in for the camera. Records what it was asked to throw away, which is
+/// the half of receipt handling that leaks images if it is wrong.
+class _FakeReceipts implements ReceiptStore {
+  _FakeReceipts({this.nextPath = '/tmp/receipt-1.jpg'});
+
+  /// What the next capture returns. Null stands for the driver backing out.
+  String? nextPath;
+  final captured = <ReceiptSource>[];
+  final discarded = <String>[];
+
+  @override
+  Future<String?> capture(ReceiptSource source) async {
+    captured.add(source);
+    return nextPath;
+  }
+
+  @override
+  Future<void> discard(String? path) async {
+    if (path != null) discarded.add(path);
+  }
+}
 
 /// Expenses were a complete persistence, sync and tax-math stack with no
 /// producer and no consumer: `app.dart` held no expense state at all, so a
@@ -65,6 +88,7 @@ void main() {
     WidgetTester tester, {
     required MemoryAppStore store,
     _RecordingSync? sync,
+    _FakeReceipts? receipts,
   }) async {
     final tracker = FakeLocationTracker();
     addTearDown(tracker.dispose);
@@ -81,6 +105,7 @@ void main() {
         syncService: service,
         locationTracker: tracker,
         drivingRefreshInterval: null,
+        receiptStore: receipts ?? _FakeReceipts(),
       ),
     );
     await tester.pumpAndSettle();
@@ -292,6 +317,164 @@ void main() {
       expect(store.snapshot.expenses, isEmpty);
       // Without the tombstone the next pull would resurrect it.
       expect(sync.calls.last.deletedExpenseIds, {'e1'});
+    });
+  });
+
+  group('receipts', () {
+    Future<void> openEditor(WidgetTester tester) async {
+      await tester.tap(find.byIcon(Icons.receipt_long_outlined));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('tax-add-expense')));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('a photographed receipt is attached to the expense', (
+      tester,
+    ) async {
+      final store = MemoryAppStore(
+        AppSnapshot(
+          driverName: 'Ahmed',
+          shifts: [shift('s1')],
+          syncCursor: DateTime.utc(2026, 8, 1),
+        ),
+      );
+      final receipts = _FakeReceipts(nextPath: '/tmp/receipt-a.jpg');
+      await pump(tester, store: store, receipts: receipts);
+
+      await openEditor(tester);
+      await tester.enterText(
+        find.byKey(const ValueKey('expense-amount-field')),
+        '120',
+      );
+      await tester.tap(find.byKey(const ValueKey('expense-add-receipt')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('receipt-source-camera')));
+      await tester.pumpAndSettle();
+
+      expect(receipts.captured, [ReceiptSource.camera]);
+      expect(
+        find.byKey(const ValueKey('expense-receipt-thumbnail')),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.byKey(const ValueKey('settings-editor-done')));
+      await tester.pumpAndSettle();
+
+      expect(store.snapshot.expenses.single.receiptPath, '/tmp/receipt-a.jpg');
+    });
+
+    testWidgets('backing out of the camera attaches nothing', (tester) async {
+      final store = MemoryAppStore(
+        AppSnapshot(
+          driverName: 'Ahmed',
+          shifts: [shift('s1')],
+          syncCursor: DateTime.utc(2026, 8, 1),
+        ),
+      );
+      // Null stands for the driver closing the camera without a shot.
+      final receipts = _FakeReceipts(nextPath: null);
+      await pump(tester, store: store, receipts: receipts);
+
+      await openEditor(tester);
+      await tester.tap(find.byKey(const ValueKey('expense-add-receipt')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('receipt-source-gallery')));
+      await tester.pumpAndSettle();
+
+      expect(receipts.captured, [ReceiptSource.gallery]);
+      expect(
+        find.byKey(const ValueKey('expense-receipt-thumbnail')),
+        findsNothing,
+      );
+      expect(find.byKey(const ValueKey('expense-add-receipt')), findsOneWidget);
+    });
+
+    testWidgets('removing a receipt clears it and deletes the photo', (
+      tester,
+    ) async {
+      // `copyWith` treats a null receiptPath as "leave it alone" — the sync
+      // merge depends on that — so removal needs its own flag, and this is
+      // what proves the flag is actually wired to the button.
+      final store = MemoryAppStore(
+        AppSnapshot(
+          driverName: 'Ahmed',
+          shifts: [shift('s1')],
+          expenses: [
+            Expense(
+              id: 'e1',
+              amount: 90,
+              category: ExpenseCategory.supplies,
+              incurredOn: DateTime(DateTime.now().year, 5, 1),
+              receiptPath: '/tmp/old-receipt.jpg',
+            ),
+          ],
+          syncCursor: DateTime.utc(2026, 8, 1),
+        ),
+      );
+      final receipts = _FakeReceipts();
+      await pump(tester, store: store, receipts: receipts);
+
+      await tester.tap(find.byIcon(Icons.receipt_long_outlined));
+      await tester.pumpAndSettle();
+      final row = find.text('Supplies');
+      await tester.scrollUntilVisible(
+        row,
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await Scrollable.ensureVisible(tester.element(row), alignment: .5);
+      await tester.pumpAndSettle();
+      await tester.tap(row);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('expense-remove-receipt')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('settings-editor-done')));
+      await tester.pumpAndSettle();
+
+      expect(store.snapshot.expenses.single.receiptPath, isNull);
+      expect(receipts.discarded, contains('/tmp/old-receipt.jpg'));
+    });
+
+    testWidgets('deleting an expense takes its photo with it', (tester) async {
+      // The image never left this device, so nothing else holds a copy —
+      // leaving it behind strands a picture of a card number on the phone.
+      final store = MemoryAppStore(
+        AppSnapshot(
+          driverName: 'Ahmed',
+          shifts: [shift('s1')],
+          expenses: [
+            Expense(
+              id: 'e1',
+              amount: 90,
+              category: ExpenseCategory.supplies,
+              incurredOn: DateTime(DateTime.now().year, 5, 1),
+              receiptPath: '/tmp/doomed-receipt.jpg',
+            ),
+          ],
+          syncCursor: DateTime.utc(2026, 8, 1),
+        ),
+      );
+      final receipts = _FakeReceipts();
+      await pump(tester, store: store, receipts: receipts);
+
+      await tester.tap(find.byIcon(Icons.receipt_long_outlined));
+      await tester.pumpAndSettle();
+      final row = find.text('Supplies');
+      await tester.scrollUntilVisible(
+        row,
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await Scrollable.ensureVisible(tester.element(row), alignment: .5);
+      await tester.pumpAndSettle();
+      await tester.longPress(row);
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
+      await tester.pumpAndSettle();
+
+      expect(store.snapshot.expenses, isEmpty);
+      expect(receipts.discarded, ['/tmp/doomed-receipt.jpg']);
     });
   });
 

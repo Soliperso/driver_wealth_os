@@ -97,19 +97,25 @@ class Expense {
 
   bool occurredIn(int year) => incurredOn.year == year;
 
+  /// [clearReceipt] removes the photo rather than keeping it.
+  ///
+  /// A plain null `receiptPath` cannot mean "remove", because that is also what
+  /// every caller that is not touching the receipt passes — including the sync
+  /// merge, which relies on null meaning "leave the local photo alone".
   Expense copyWith({
     double? amount,
     ExpenseCategory? category,
     DateTime? incurredOn,
     String? note,
     String? receiptPath,
+    bool clearReceipt = false,
   }) => Expense(
     id: id,
     amount: amount ?? this.amount,
     category: category ?? this.category,
     incurredOn: incurredOn ?? this.incurredOn,
     note: note ?? this.note,
-    receiptPath: receiptPath ?? this.receiptPath,
+    receiptPath: clearReceipt ? null : (receiptPath ?? this.receiptPath),
   );
 
   Map<String, Object?> toJson() => {

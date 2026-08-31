@@ -29,6 +29,7 @@ import '../../settings/presentation/privacy_security_screen.dart';
 import '../../settings/presentation/settings_screen.dart';
 import '../../shifts/domain/shift.dart';
 import '../../shifts/presentation/add_shift_screen.dart';
+import '../../tax/application/receipt_store.dart';
 import '../../tax/domain/expense.dart';
 import '../../tax/presentation/tax_year_screen.dart';
 import 'today_screen.dart';
@@ -75,7 +76,11 @@ class AppShell extends StatefulWidget {
     this.onDeleteAccount,
     this.adminRepository,
     this.clock,
+    this.receiptStore,
   });
+
+  /// Injectable so a test can attach a receipt without a camera.
+  final ReceiptStore? receiptStore;
 
   /// Permanently destroys the account. Null in a local-only build, where there
   /// is no account to destroy.
@@ -443,6 +448,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         expenses: widget.expenses,
         units: widget.units,
         clock: widget.clock,
+        receipts: widget.receiptStore,
         onExpenseAdded: widget.onExpenseAdded,
         onExpenseUpdated: widget.onExpenseUpdated,
         onExpenseDeleted: widget.onExpenseDeleted,

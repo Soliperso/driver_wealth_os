@@ -61,9 +61,12 @@ both inputs, so it makes the comparison and marks the larger one.
   number depends on filing status, other income, a spouse's withholding and the
   QBI deduction, none of which the app asks for. Nothing here is tax advice and
   nothing is filed.
-- Receipt images are deliberately not uploaded. A receipt can carry a card number
-  and a home address; the path syncs so a record knows it has one, the image
-  stays on the device that took it.
+- Receipt images are deliberately not uploaded. A receipt can carry a card
+  number, a signature and a home address, and storing every driver's shoebox is
+  a liability with no product benefit. An expense can carry a photo taken with
+  the camera or picked from the library; the path syncs so a second device knows
+  a record has one, and the image stays on the device that took it. Deleting the
+  expense deletes the photo, since nothing else holds a copy.
 
 ## Calculation methodology
 

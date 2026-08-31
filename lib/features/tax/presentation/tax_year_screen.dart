@@ -10,6 +10,7 @@ import '../../../core/widgets/soft_surfaces.dart';
 import '../../settings/application/history_export.dart';
 import '../../settings/domain/measurement_units.dart';
 import '../../shifts/domain/shift.dart';
+import '../application/receipt_store.dart';
 import '../domain/expense.dart';
 import '../domain/quarterly_estimate.dart';
 import '../domain/tax_year_summary.dart';
@@ -37,7 +38,11 @@ class TaxYearScreen extends StatefulWidget {
     required this.onExpenseDeleted,
     this.units = const MeasurementUnits(),
     this.clock,
+    this.receipts,
   });
+
+  /// Injectable so a test can attach a receipt without a camera.
+  final ReceiptStore? receipts;
 
   final List<Shift> shifts;
   final List<Expense> expenses;
@@ -120,6 +125,7 @@ class _TaxYearScreenState extends State<TaxYearScreen> {
       units: widget.units,
       initialCategory: category,
       today: widget.clock,
+      receipts: widget.receipts,
     );
     if (expense != null) widget.onExpenseAdded(expense);
   }
@@ -130,6 +136,7 @@ class _TaxYearScreenState extends State<TaxYearScreen> {
       units: widget.units,
       initial: expense,
       today: widget.clock,
+      receipts: widget.receipts,
     );
     if (edited != null) widget.onExpenseUpdated(edited);
   }
@@ -602,6 +609,16 @@ class _ExpenseRow extends StatelessWidget {
                   fontWeight: FontWeight.w700,
                 ),
               ),
+              // A quiet marker, not the photo: the list is scanned for amounts,
+              // and a row of thumbnails would compete with them.
+              if (expense.receiptPath != null) ...[
+                const SizedBox(width: Space.sm),
+                Icon(
+                  Icons.attach_file_rounded,
+                  size: 15,
+                  color: colors.onSurfaceVariant,
+                ),
+              ],
               if (expense.category.isVehicleCost) ...[
                 const SizedBox(width: Space.sm),
                 Icon(

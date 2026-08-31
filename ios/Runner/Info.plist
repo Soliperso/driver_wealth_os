@@ -32,6 +32,13 @@
 	<string>Driver Wealth measures the miles you drive during a shift so it can calculate your true profit after vehicle costs.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>Driver Wealth keeps counting your miles while you work in the Uber or Lyft app. Tracking runs only during a shift you started, and stops the moment you tap End Shift.</string>
+	<!-- Receipts. Same rule as the location strings: say what is taken, where it
+	     goes, and that it does not leave the phone — the driver is being asked
+	     to photograph a document with their card number on it. -->
+	<key>NSCameraUsageDescription</key>
+	<string>Driver Wealth uses the camera to photograph a receipt for an expense. The photo is stored on this device only and is never uploaded.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Driver Wealth lets you attach a receipt you have already photographed. The image is copied to this device only and is never uploaded.</string>
 	<!-- Required for location updates to continue once the driver switches to
 	     their rideshare app; without it a shift would stop accruing mileage. -->
 	<key>UIBackgroundModes</key>

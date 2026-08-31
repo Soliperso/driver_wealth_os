@@ -285,6 +285,32 @@ void main() {
     );
   });
 
+  // The receipt slot is the one control that asks the driver to photograph a
+  // document with their card number on it, so the reassurance beside it has to
+  // be legible rather than buried.
+  testWidgets('expense editor with a receipt attached', (tester) async {
+    await capture(
+      tester,
+      'expense_editor_receipt',
+      Scaffold(
+        body: ExpenseEditorSheet(
+          units: const MeasurementUnits(),
+          today: _clock,
+          initial: Expense(
+            id: 'e1',
+            amount: 289.5,
+            category: ExpenseCategory.maintenance,
+            incurredOn: DateTime(2026, 8, 17),
+            note: 'Brakes and rotors',
+            // A path that does not resolve, which is also the real case after
+            // the OS clears the file: the row must still render.
+            receiptPath: '/tmp/not-a-real-receipt.jpg',
+          ),
+        ),
+      ),
+    );
+  });
+
   testWidgets('expense categories sheet', (tester) async {
     await capture(
       tester,
