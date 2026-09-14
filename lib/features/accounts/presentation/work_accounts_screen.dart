@@ -347,7 +347,7 @@ class _PrivacyNote extends StatelessWidget {
       const SizedBox(width: 9),
       Expanded(
         child: Text(
-          'Connections are read-only. Driver Wealth never changes your work account or accepts jobs for you.',
+          'Connections are read-only. Keeprate never changes your work account or accepts jobs for you.',
           style: Theme.of(context).textTheme.bodySmall,
         ),
       ),

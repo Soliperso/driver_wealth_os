@@ -16,7 +16,7 @@ void main() {
       ),
     );
 
-    await tester.pumpWidget(DriverWealthApp(store: store));
+    await tester.pumpWidget(KeeprateApp(store: store));
     await tester.pumpAndSettle();
     await tester.tap(find.text('History'));
     await tester.pumpAndSettle();
@@ -58,7 +58,7 @@ void main() {
       ),
     );
 
-    await tester.pumpWidget(DriverWealthApp(store: store));
+    await tester.pumpWidget(KeeprateApp(store: store));
     await tester.pumpAndSettle();
     await tester.tap(find.text('History'));
     await tester.pumpAndSettle();
@@ -93,7 +93,7 @@ void main() {
       ),
     );
 
-    await tester.pumpWidget(DriverWealthApp(store: store));
+    await tester.pumpWidget(KeeprateApp(store: store));
     await tester.pumpAndSettle();
     await tester.tap(find.text('History'));
     await tester.pumpAndSettle();
@@ -134,7 +134,7 @@ void main() {
       ),
     );
 
-    await tester.pumpWidget(DriverWealthApp(store: store));
+    await tester.pumpWidget(KeeprateApp(store: store));
     await tester.pumpAndSettle();
     await tester.tap(find.text('History'));
     await tester.pumpAndSettle();
@@ -167,7 +167,7 @@ void main() {
       ),
     );
 
-    await tester.pumpWidget(DriverWealthApp(store: store));
+    await tester.pumpWidget(KeeprateApp(store: store));
     await tester.pumpAndSettle();
     await tester.tap(find.text('History'));
     await tester.pumpAndSettle();
@@ -194,7 +194,7 @@ void main() {
       ),
     );
 
-    await tester.pumpWidget(DriverWealthApp(store: store));
+    await tester.pumpWidget(KeeprateApp(store: store));
     await tester.pumpAndSettle();
     await tester.tap(find.text('History'));
     await tester.pumpAndSettle();

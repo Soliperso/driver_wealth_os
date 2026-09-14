@@ -256,6 +256,32 @@ void main() {
     );
   });
 
+  /// A running session, plus a clock that makes its elapsed time exact.
+  ///
+  /// `refreshInterval: null` only holds the frame — elapsed is still measured
+  /// against the real clock on every build, so without this the golden drifts by
+  /// a digit between the run that writes it and the very next run that checks
+  /// it. Anchoring the clock to `startedAt` pins the duration while leaving the
+  /// rest of the screen reading roughly "now", as the other fixtures do.
+  ({DrivingSession session, DateTime Function() clock}) runningSession({
+    Duration ranFor = const Duration(hours: 1, minutes: 43, seconds: 17),
+    DrivingSession Function(DateTime startedAt)? build,
+  }) {
+    final startedAt = DateTime.now().subtract(ranFor);
+    return (
+      session:
+          build?.call(startedAt) ??
+          DrivingSession.single(
+            id: 'preview',
+            startedAt: startedAt,
+            platform: WorkPlatform.uber,
+            distanceMeters: 61800, // ~38.4 miles
+            vehicleCostPerMile: .35,
+          ),
+      clock: () => startedAt.add(ranFor),
+    );
+  }
+
   testWidgets('today idle with start driving', (tester) async {
     await capture(
       tester,
@@ -272,6 +298,7 @@ void main() {
   });
 
   testWidgets('today driving session active', (tester) async {
+    final running = runningSession();
     await capture(
       tester,
       'today_driving_active',
@@ -285,17 +312,11 @@ void main() {
         onEndShift: () async {},
         onPauseDriving: () async {},
         onResumeDriving: () async {},
-        // Frozen so the golden is deterministic and the tree can settle.
+        // Frozen so the tree can settle; the clock is what makes the elapsed
+        // figure reproducible.
         drivingRefreshInterval: null,
-        drivingSession: DrivingSession.single(
-          id: 'preview',
-          startedAt: DateTime.now().subtract(
-            const Duration(hours: 1, minutes: 43, seconds: 17),
-          ),
-          platform: WorkPlatform.uber,
-          distanceMeters: 61800, // ~38.4 miles
-          vehicleCostPerMile: .35,
-        ),
+        clock: running.clock,
+        drivingSession: running.session,
       ),
     );
   });
@@ -306,6 +327,24 @@ void main() {
   /// near-black discs, and on a dark card they can disappear into it entirely.
   /// This is the case that has to keep being checked by eye.
   testWidgets('today driving multi app dark', (tester) async {
+    final running = runningSession(
+      build: (startedAt) => DrivingSession(
+        id: 'preview',
+        startedAt: startedAt,
+        platformSpans: [
+          PlatformSpan(
+            platform: WorkPlatform.uber,
+            from: startedAt.add(const Duration(minutes: 43, seconds: 17)),
+          ),
+          PlatformSpan(
+            platform: WorkPlatform.lyft,
+            from: startedAt.add(const Duration(hours: 1, minutes: 13)),
+          ),
+        ],
+        distanceMeters: 61800,
+        vehicleCostPerMile: .35,
+      ),
+    );
     await capture(
       tester,
       'today_driving_multi_app_dark',
@@ -324,30 +363,28 @@ void main() {
         onAddDrivingPlatform: () async {},
         onRemoveDrivingPlatform: (_) async {},
         drivingRefreshInterval: null,
-        drivingSession: DrivingSession(
-          id: 'preview',
-          startedAt: DateTime.now().subtract(
-            const Duration(hours: 1, minutes: 43, seconds: 17),
-          ),
-          platformSpans: [
-            PlatformSpan(
-              platform: WorkPlatform.uber,
-              from: DateTime.now().subtract(const Duration(hours: 1)),
-            ),
-            PlatformSpan(
-              platform: WorkPlatform.lyft,
-              from: DateTime.now().subtract(const Duration(minutes: 30)),
-            ),
-          ],
-          distanceMeters: 61800,
-          vehicleCostPerMile: .35,
-        ),
+        clock: running.clock,
+        drivingSession: running.session,
       ),
       brightness: Brightness.dark,
     );
   });
 
   testWidgets('today driving session paused', (tester) async {
+    const ranFor = Duration(hours: 2, minutes: 26, seconds: 17);
+    final running = runningSession(
+      ranFor: ranFor,
+      build: (startedAt) => DrivingSession.single(
+        id: 'preview',
+        startedAt: startedAt,
+        platform: WorkPlatform.uber,
+        distanceMeters: 61800,
+        vehicleCostPerMile: .35,
+        // Long enough to be carrying the warning, so the golden covers the
+        // loudest form of the paused card rather than its quietest.
+        pausedAt: startedAt.add(ranFor - const Duration(minutes: 43)),
+      ),
+    );
     await capture(
       tester,
       'today_driving_paused',
@@ -362,18 +399,8 @@ void main() {
         onPauseDriving: () async {},
         onResumeDriving: () async {},
         drivingRefreshInterval: null,
-        drivingSession: DrivingSession.single(
-          id: 'preview',
-          startedAt: DateTime.now().subtract(
-            const Duration(hours: 2, minutes: 26, seconds: 17),
-          ),
-          platform: WorkPlatform.uber,
-          distanceMeters: 61800,
-          vehicleCostPerMile: .35,
-          // Long enough to be carrying the warning, so the golden covers the
-          // loudest form of the paused card rather than its quietest.
-          pausedAt: DateTime.now().subtract(const Duration(minutes: 43)),
-        ),
+        clock: running.clock,
+        drivingSession: running.session,
       ),
     );
   });
@@ -535,7 +562,25 @@ class _PreviewAdminRepository implements AdminRepository {
   );
 
   @override
-  Future<List<AdminUserSummary>> loadUsers({String query = ''}) async => [
+  Future<List<AdminAction>> loadRecentActions() async => [
+    AdminAction(
+      id: '1',
+      paused: true,
+      actorEmail: 'owner@example.com',
+      targetLabel: 'Sam',
+      at: DateTime.utc(2026, 8, 14, 9, 30),
+    ),
+  ];
+
+  @override
+  Future<AdminUserPage> loadUsers({
+    String query = '',
+    AdminAccessFilter filter = AdminAccessFilter.all,
+    int limit = 50,
+    int offset = 0,
+  }) async => AdminUserPage(total: 2, users: _users);
+
+  final _users = <AdminUserSummary>[
     AdminUserSummary(
       id: 'one',
       email: 'taylor@example.com',

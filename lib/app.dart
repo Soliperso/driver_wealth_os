@@ -23,8 +23,8 @@ import 'features/tax/application/receipt_store.dart';
 import 'features/tax/domain/expense.dart';
 import 'features/today/presentation/app_shell.dart';
 
-class DriverWealthApp extends StatefulWidget {
-  const DriverWealthApp({
+class KeeprateApp extends StatefulWidget {
+  const KeeprateApp({
     super.key,
     this.store,
     this.earningsRepository,
@@ -70,10 +70,10 @@ class DriverWealthApp extends StatefulWidget {
   final DateTime Function()? clock;
 
   @override
-  State<DriverWealthApp> createState() => _DriverWealthAppState();
+  State<KeeprateApp> createState() => _KeeprateAppState();
 }
 
-class _DriverWealthAppState extends State<DriverWealthApp> {
+class _KeeprateAppState extends State<KeeprateApp> {
   late final AppStore _store;
   late final EarningsRepository _earnings;
   DrivingSessionController? _driving;
@@ -216,7 +216,7 @@ class _DriverWealthAppState extends State<DriverWealthApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Driver Wealth OS',
+      title: 'Keeprate',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,
@@ -279,13 +279,19 @@ class _DriverWealthAppState extends State<DriverWealthApp> {
     );
   }
 
+  /// How long the splash stays up. A floor, not a surcharge: the wait below
+  /// subtracts whatever loading already used, so a slow device does not pay
+  /// this on top of its own load time.
+  static const _minimumSplash = Duration(seconds: 3);
+
   Future<void> _load() async {
     _updateLoadingMessage('Loading your data');
+    final startedAt = DateTime.now();
     final snapshot = await _store.load();
     if (!mounted) return;
 
-    // Show splash screen for at least 3 seconds
-    await Future.delayed(const Duration(seconds: 3));
+    final remaining = _minimumSplash - DateTime.now().difference(startedAt);
+    if (remaining > Duration.zero) await Future.delayed(remaining);
 
     if (!mounted) return;
     setState(() {

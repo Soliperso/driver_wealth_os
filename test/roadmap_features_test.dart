@@ -15,7 +15,7 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
 
     final store = MemoryAppStore(const AppSnapshot(driverName: 'Ahmed'));
-    await tester.pumpWidget(DriverWealthApp(store: store));
+    await tester.pumpWidget(KeeprateApp(store: store));
     await tester.pumpAndSettle();
 
     expect(find.byType(NavigationBar), findsOneWidget);
@@ -32,7 +32,7 @@ void main() {
     final store = MemoryAppStore(
       AppSnapshot(driverName: 'Ahmed', shifts: _patternShifts()),
     );
-    await tester.pumpWidget(DriverWealthApp(store: store));
+    await tester.pumpWidget(KeeprateApp(store: store));
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('History'));

@@ -25,7 +25,7 @@ class Wordmark extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Driver Wealth',
+              'Keeprate',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                 color: colors.onSurface,
                 fontWeight: FontWeight.w800,

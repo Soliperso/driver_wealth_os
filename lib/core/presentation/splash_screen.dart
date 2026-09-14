@@ -82,44 +82,19 @@ class _SplashScreenState extends State<SplashScreen>
               ),
             ),
             const SizedBox(height: 32),
-            // Horizontal progress bar with percentage
+            // Indeterminate on purpose. Start-up has no measurable percentage
+            // to report — the old readout counted to 100% off this screen's
+            // own timer, so it claimed progress it was not measuring. The bar
+            // says "working", which is the only honest claim available.
             SizedBox(
               width: 200,
-              child: Column(
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: AnimatedBuilder(
-                      animation: _progress,
-                      builder: (context, child) {
-                        return LinearProgressIndicator(
-                          value: _progress.value,
-                          minHeight: 6,
-                          backgroundColor: Colors.white.withValues(alpha: 0.2),
-                          valueColor: const AlwaysStoppedAnimation<Color>(
-                            Colors.white,
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  // Percentage text
-                  AnimatedBuilder(
-                    animation: _progress,
-                    builder: (context, child) {
-                      int percentage = (_progress.value * 100).toInt();
-                      return Text(
-                        '$percentage%',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      );
-                    },
-                  ),
-                ],
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: LinearProgressIndicator(
+                  minHeight: 6,
+                  backgroundColor: Colors.white.withValues(alpha: 0.2),
+                  valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
               ),
             ),
           ],

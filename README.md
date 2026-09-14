@@ -1,4 +1,4 @@
-# Driver Wealth OS
+# Keeprate
 
 A polished Flutter MVP that helps rideshare drivers understand true profit without arranging rides, matching passengers, setting fares, or processing transportation payments.
 
@@ -67,6 +67,23 @@ flutter run \
 ```
 
 Never place the Argyle API secret or Supabase service-role key in Flutter or commit them to the repository.
+
+## Platform owner access
+
+The admin dashboard is granted in Supabase, never from inside the app. After the
+account has signed up, run this once from the SQL editor or another
+service-role connection:
+
+```sql
+select public.promote_platform_owner('you@example.com');
+```
+
+The function is revoked from `public` and granted only to `service_role`, and
+the roles table has row-level security on with no policy, so an authenticated
+session can neither promote itself nor read anyone's role — the app asks only
+the boolean `is_platform_admin()`. Every pause or restore of a driver's cloud
+access is written to an audit trail the dashboard displays and no client can
+edit. See [`docs/ADMIN_FEATURES.md`](docs/ADMIN_FEATURES.md).
 
 ## Verify
 

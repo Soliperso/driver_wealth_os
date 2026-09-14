@@ -154,7 +154,9 @@ final class HistoryExport {
     final stamp =
         year?.toString() ??
         DateFormat('yyyy-MM-dd').format(now ?? DateTime.now());
-    final name = 'driver-wealth-$stamp.csv';
+    // The filename is what an accountant sees in their inbox, so it carries the
+    // product name rather than the package's.
+    final name = 'keeprate-$stamp.csv';
     final directory = await getTemporaryDirectory();
     final file = File('${directory.path}/$name');
     await file.writeAsString(csv, flush: true);
@@ -165,8 +167,8 @@ final class HistoryExport {
           files: [XFile(file.path, mimeType: 'text/csv')],
           fileNameOverrides: [name],
           subject: year == null
-              ? 'Driver Wealth records'
-              : 'Driver Wealth records — $year',
+              ? 'Keeprate records'
+              : 'Keeprate records — $year',
         ),
       );
     } finally {

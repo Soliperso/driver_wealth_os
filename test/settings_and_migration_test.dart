@@ -124,7 +124,7 @@ void main() {
 
   testWidgets('settings auto-save the goal and vehicle rate', (tester) async {
     final store = MemoryAppStore(const AppSnapshot(driverName: 'Ahmed'));
-    await tester.pumpWidget(DriverWealthApp(store: store));
+    await tester.pumpWidget(KeeprateApp(store: store));
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('Settings'));
@@ -165,7 +165,7 @@ void main() {
     // the app to set them: `onThemeModeChanged` was threaded end to end and
     // never invoked, so dark mode was reachable only by changing the OS.
     final store = MemoryAppStore(const AppSnapshot(driverName: 'Ahmed'));
-    await tester.pumpWidget(DriverWealthApp(store: store));
+    await tester.pumpWidget(KeeprateApp(store: store));
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('Settings'));
@@ -204,7 +204,7 @@ void main() {
     final store = MemoryAppStore(
       const AppSnapshot(driverName: 'Ahmed', vehicleCostPerMile: .55),
     );
-    await tester.pumpWidget(DriverWealthApp(store: store));
+    await tester.pumpWidget(KeeprateApp(store: store));
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('Enter a session manually'));

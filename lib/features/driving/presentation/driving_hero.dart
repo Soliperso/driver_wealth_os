@@ -28,6 +28,7 @@ class DrivingHero extends StatefulWidget {
     this.hourlyFloor = DriverPreferences.defaultHourlyFloor,
     this.units = const MeasurementUnits(),
     this.refreshInterval = const Duration(seconds: 1),
+    this.clock,
     this.onUpgradeBackground,
     this.onPause,
     this.onResume,
@@ -90,6 +91,11 @@ class DrivingHero extends StatefulWidget {
   /// on every build, so a frozen ticker shows a stale label and nothing more.
   final Duration? refreshInterval;
 
+  /// Injectable wall clock. Freezing the ticker holds the *frame*, but elapsed
+  /// time is still measured against the real clock on every build, so a golden
+  /// of a running session drifts by a digit between one run and the next.
+  final DateTime Function()? clock;
+
   @override
   State<DrivingHero> createState() => _DrivingHeroState();
 }
@@ -125,9 +131,10 @@ class _DrivingHeroState extends State<DrivingHero> {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final session = widget.session;
-    final elapsed = session.elapsed();
+    final now = widget.clock?.call();
+    final elapsed = session.elapsed(now: now);
     final paused = session.isPaused;
-    final breakSoFar = session.currentPause();
+    final breakSoFar = session.currentPause(now: now);
 
     return GlassSurface(
       key: const ValueKey('driving-session-active'),

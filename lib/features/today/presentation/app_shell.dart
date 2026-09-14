@@ -390,6 +390,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       0 => TodayScreen(
         driverName: widget.driverName,
         shifts: widget.shifts,
+        clock: widget.clock,
         dailyGoal: widget.dailyGoal,
         onAddShift: () => _addShift(returnToToday: true),
         onDailyGoalChanged: widget.onDailyGoalChanged,
@@ -662,10 +663,10 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
           StartFailure.serviceDisabled =>
             'Location services are off. Turn them on to track miles.',
           StartFailure.permissionDenied =>
-            'Driver Wealth needs location access to track your miles. You can '
+            'Keeprate needs location access to track your miles. You can '
                 'still enter a session by hand.',
           StartFailure.permissionDeniedForever =>
-            'Location is blocked for Driver Wealth. Only Settings can undo it.',
+            'Location is blocked for Keeprate. Only Settings can undo it.',
         }),
         duration: const Duration(seconds: 6),
         action: needsSettings
@@ -694,7 +695,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: const Text(
-          'Set location to “Always” for Driver Wealth to keep counting miles '
+          'Set location to “Always” for Keeprate to keep counting miles '
           'in the background.',
         ),
         duration: const Duration(seconds: 6),

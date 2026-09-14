@@ -8,9 +8,23 @@ abstract interface class AdminRepository {
 
   Future<AdminOverview> loadOverview();
 
-  Future<List<AdminUserSummary>> loadUsers({String query = ''});
+  /// One page of drivers matching [query] and [filter].
+  ///
+  /// Both the search and the status filter are applied by the control plane
+  /// rather than here, so paging stays correct: filtering a page after it
+  /// arrives would answer "the paused drivers on this page" instead of "the
+  /// paused drivers".
+  Future<AdminUserPage> loadUsers({
+    String query,
+    AdminAccessFilter filter,
+    int limit,
+    int offset,
+  });
 
   Future<void> setCloudAccess({required String userId, required bool enabled});
+
+  /// The most recent access changes, newest first.
+  Future<List<AdminAction>> loadRecentActions();
 }
 
 final class SupabaseAdminRepository implements AdminRepository {
@@ -18,6 +32,10 @@ final class SupabaseAdminRepository implements AdminRepository {
     : _client = client ?? Supabase.instance.client;
 
   final SupabaseClient _client;
+
+  /// Deliberately smaller than the control plane's 200-row ceiling. A page is
+  /// something an owner scrolls, and the rest is one tap away.
+  static const pageSize = 50;
 
   @override
   Future<bool> canAccessAdmin() async {
@@ -32,20 +50,22 @@ final class SupabaseAdminRepository implements AdminRepository {
   }
 
   @override
-  Future<List<AdminUserSummary>> loadUsers({String query = ''}) async {
+  Future<AdminUserPage> loadUsers({
+    String query = '',
+    AdminAccessFilter filter = AdminAccessFilter.all,
+    int limit = pageSize,
+    int offset = 0,
+  }) async {
     final result = await _client.rpc(
       'admin_list_users',
       params: {
         'search_text': query.trim().isEmpty ? null : query.trim(),
-        'limit_count': 100,
-        'offset_count': 0,
+        'limit_count': limit,
+        'offset_count': offset,
+        'status_filter': filter.id,
       },
     );
-    final rows = result is List ? result : const <Object?>[];
-    return [
-      for (final row in rows)
-        if (row is Map) AdminUserSummary.fromJson(_map(row)),
-    ];
+    return AdminUserPage.fromJson(result);
   }
 
   @override
@@ -56,6 +76,19 @@ final class SupabaseAdminRepository implements AdminRepository {
     'admin_set_user_cloud_access',
     params: {'target_user_id': userId, 'enabled': enabled},
   );
+
+  @override
+  Future<List<AdminAction>> loadRecentActions() async {
+    final result = await _client.rpc(
+      'admin_recent_actions',
+      params: {'limit_count': 20},
+    );
+    final rows = result is List ? result : const <Object?>[];
+    return [
+      for (final row in rows)
+        if (row is Map) AdminAction.fromJson(_map(row)),
+    ];
+  }
 
   static Map<String, dynamic> _map(Object? value) {
     if (value is! Map) {

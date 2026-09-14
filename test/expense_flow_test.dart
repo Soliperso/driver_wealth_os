@@ -99,7 +99,7 @@ void main() {
     final service = sync ?? _RecordingSync();
 
     await tester.pumpWidget(
-      DriverWealthApp(
+      KeeprateApp(
         store: store,
         authGateway: gateway,
         syncService: service,

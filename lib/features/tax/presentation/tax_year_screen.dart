@@ -318,6 +318,9 @@ class _MethodComparison extends StatelessWidget {
     final colors = theme.colorScheme;
     final standardWins =
         summary.betterMethod == DeductionMethod.standardMileage;
+    // The part of the actual-expenses figure that is modelled rather than
+    // recorded: miles × the driver's per-mile rate.
+    final modelledWear = summary.shiftSummary.vehicleCost;
     return GlassSurface(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -356,10 +359,27 @@ class _MethodComparison extends StatelessWidget {
           const SizedBox(height: Space.sm),
           _MethodRow(
             label: 'Actual expenses',
-            detail: 'Fuel, upkeep, wear',
+            detail: 'Fuel, upkeep, estimated wear',
             value: units.whole(summary.vehicleExpenses),
             selected: !standardWins,
           ),
+          // The wear allowance is miles × the rate set in Settings, not a cost
+          // anyone receipted. It is honest as a running estimate of what the
+          // car costs, but it is sitting on the side of a comparison the IRS
+          // expects to be backed by records, so it cannot go unlabelled — least
+          // of all when it is the side the screen is recommending.
+          if (modelledWear > 0) ...[
+            const SizedBox(height: Space.sm),
+            Text(
+              'Includes ${units.cents(modelledWear)} of estimated vehicle wear '
+              'at your Settings rate, not receipted cost. Claiming actual '
+              'expenses means backing them with your own records.',
+              key: const ValueKey('tax-actual-estimate-note'),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: colors.onSurfaceVariant,
+              ),
+            ),
+          ],
           if (summary.methodAdvantage > 0) ...[
             const SizedBox(height: Space.md),
             Text(

@@ -11,7 +11,7 @@ void main() {
     tester,
   ) async {
     final store = MemoryAppStore(const AppSnapshot(driverName: 'Ahmed'));
-    await tester.pumpWidget(DriverWealthApp(store: store));
+    await tester.pumpWidget(KeeprateApp(store: store));
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('Enter a session manually'));

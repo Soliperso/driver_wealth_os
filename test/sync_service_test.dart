@@ -193,7 +193,7 @@ void main() {
       final sync = RecordingSyncService();
 
       await tester.pumpWidget(
-        DriverWealthApp(
+        KeeprateApp(
           store: store,
           authGateway: gateway,
           syncService: sync,
@@ -310,7 +310,7 @@ void main() {
       final sync = RecordingSyncService()..failure = Exception('offline');
 
       await tester.pumpWidget(
-        DriverWealthApp(
+        KeeprateApp(
           store: store,
           authGateway: gateway,
           syncService: sync,

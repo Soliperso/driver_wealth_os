@@ -15,5 +15,5 @@ Future<void> main() async {
       publishableKey: BackendConfig.supabasePublishableKey,
     );
   }
-  runApp(DriverWealthApp(store: SharedPreferencesAppStore()));
+  runApp(KeeprateApp(store: SharedPreferencesAppStore()));
 }

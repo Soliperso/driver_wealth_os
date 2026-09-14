@@ -35,7 +35,7 @@ void main() {
     required FakeLocationTracker tracker,
   }) async {
     await tester.pumpWidget(
-      DriverWealthApp(
+      KeeprateApp(
         store: store,
         authGateway: gateway,
         locationTracker: tracker,
@@ -487,7 +487,7 @@ void main() {
     // No gateway injected and no backend configured in the test environment,
     // so the app stays local-only exactly as it did before accounts existed.
     await tester.pumpWidget(
-      DriverWealthApp(
+      KeeprateApp(
         store: MemoryAppStore(const AppSnapshot(driverName: 'Ahmed')),
         locationTracker: tracker,
         drivingRefreshInterval: null,
@@ -650,7 +650,7 @@ void main() {
     addTearDown(tracker.dispose);
 
     await tester.pumpWidget(
-      DriverWealthApp(
+      KeeprateApp(
         store: MemoryAppStore(const AppSnapshot(driverName: 'Ahmed')),
         locationTracker: tracker,
         drivingRefreshInterval: null,

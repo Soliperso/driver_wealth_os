@@ -45,6 +45,7 @@ class TodayScreen extends StatelessWidget {
     this.onAddDrivingPlatform,
     this.onRemoveDrivingPlatform,
     this.drivingRefreshInterval = const Duration(seconds: 1),
+    this.clock,
     this.pendingDraft,
     this.onResumeDraft,
     this.onDiscardDraft,
@@ -91,6 +92,14 @@ class TodayScreen extends StatelessWidget {
   /// Null freezes the live clock. See [DrivingHero.refreshInterval].
   final Duration? drivingRefreshInterval;
 
+  /// Injectable wall clock, as on History and Taxes.
+  ///
+  /// This screen is anchored on "now" twice over — the date in the header and
+  /// which shifts count as today's — so without a seam a golden of it can only
+  /// match on the day it was taken, and a running session's elapsed time makes
+  /// it drift between one run and the next.
+  final DateTime Function()? clock;
+
   /// A tracked shift still waiting on its earnings.
   final Shift? pendingDraft;
   final VoidCallback? onResumeDraft;
@@ -101,7 +110,7 @@ class TodayScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final now = DateTime.now();
+    final now = (clock ?? DateTime.now)();
     final todayShifts = shifts.where((shift) => shift.occurredOn(now));
     final recentShifts = shifts.take(5).toList();
     final summary = ShiftSummary.from(todayShifts);
@@ -124,7 +133,7 @@ class TodayScreen extends StatelessWidget {
           ),
           const SizedBox(height: 2),
           Text(
-            _formattedDate(DateTime.now()),
+            _formattedDate(now),
             style: Theme.of(context).textTheme.bodySmall,
           ),
         ],
@@ -187,6 +196,7 @@ class TodayScreen extends StatelessWidget {
                   trackingInterrupted: drivingTrackingInterrupted,
                   hourlyFloor: hourlyFloor,
                   units: units,
+                  clock: clock,
                   onEndShift: onEndShift ?? () async {},
                   onPause: onPauseDriving,
                   onResume: onResumeDriving,

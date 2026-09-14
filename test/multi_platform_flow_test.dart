@@ -18,7 +18,7 @@ void main() {
     var now = startedAt;
 
     await tester.pumpWidget(
-      DriverWealthApp(
+      KeeprateApp(
         store: store,
         locationTracker: tracker,
         drivingRefreshInterval: null,
@@ -119,7 +119,7 @@ void main() {
     var now = startedAt;
 
     await tester.pumpWidget(
-      DriverWealthApp(
+      KeeprateApp(
         store: store,
         locationTracker: tracker,
         drivingRefreshInterval: null,
@@ -205,7 +205,7 @@ void main() {
   ) async {
     final store = MemoryAppStore(const AppSnapshot(driverName: 'Ahmed'));
 
-    await tester.pumpWidget(DriverWealthApp(store: store));
+    await tester.pumpWidget(KeeprateApp(store: store));
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('Enter a session manually'));

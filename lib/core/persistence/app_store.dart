@@ -351,6 +351,13 @@ final class SharedPreferencesAppStore implements AppStore {
   SharedPreferencesAppStore({Future<SharedPreferences>? preferences})
     : _preferences = preferences ?? SharedPreferences.getInstance();
 
+  /// Do not rename this, even though the app no longer is called this.
+  ///
+  /// It is the key every existing install's data is already filed under. A
+  /// rename would not migrate anything — it would simply look up a key that has
+  /// never been written, and every driver would open the app to an empty
+  /// history with their records still sitting on disk under the old name. The
+  /// `v1` suffix is the intended escape hatch if the shape ever has to change.
   static const _snapshotKey = 'driver_wealth_app_snapshot_v1';
   final Future<SharedPreferences> _preferences;
 

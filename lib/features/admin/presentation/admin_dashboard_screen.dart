@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../core/format/money.dart';
@@ -18,13 +20,27 @@ class AdminDashboardScreen extends StatefulWidget {
 
 class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   final _search = TextEditingController();
-  late Future<_AdminDashboardData> _data;
+  var _filter = AdminAccessFilter.all;
+
+  AdminOverview? _overview;
+  var _page = const AdminUserPage.empty();
+  var _actions = const <AdminAction>[];
+
+  var _loading = true;
+  var _loadingMore = false;
+  var _failed = false;
   String? _changingUserId;
+
+  /// Guards against an out-of-order response. Searching, filtering and
+  /// refreshing all issue their own load, and a slow earlier one landing after
+  /// a fast later one would put the wrong drivers on screen under the current
+  /// filter.
+  var _request = 0;
 
   @override
   void initState() {
     super.initState();
-    _data = _load();
+    unawaited(_reload());
   }
 
   @override
@@ -33,13 +49,78 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     super.dispose();
   }
 
-  Future<_AdminDashboardData> _load() async {
-    final overview = await widget.repository.loadOverview();
-    final users = await widget.repository.loadUsers(query: _search.text);
-    return _AdminDashboardData(overview: overview, users: users);
+  /// Reloads the overview, the first page of drivers, and the audit trail.
+  ///
+  /// [keepDepth] refetches as many rows as are already on screen instead of
+  /// one page, so acting on a driver does not throw an owner back to the top
+  /// of a list they had paged through.
+  Future<void> _reload({bool keepDepth = false}) async {
+    final token = ++_request;
+    setState(() {
+      _loading = true;
+      _failed = false;
+    });
+    final depth = keepDepth
+        ? _page.users.length.clamp(
+            SupabaseAdminRepository.pageSize,
+            AdminUserPage.maxRows,
+          )
+        : SupabaseAdminRepository.pageSize;
+    try {
+      final overview = await widget.repository.loadOverview();
+      final page = await widget.repository.loadUsers(
+        query: _search.text,
+        filter: _filter,
+        limit: depth,
+      );
+      final actions = await widget.repository.loadRecentActions();
+      if (!mounted || token != _request) return;
+      setState(() {
+        _overview = overview;
+        _page = page;
+        _actions = actions;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted || token != _request) return;
+      setState(() {
+        _loading = false;
+        _failed = true;
+      });
+    }
   }
 
-  void _refresh() => setState(() => _data = _load());
+  Future<void> _loadMore() async {
+    if (_loadingMore || !_page.hasMore) return;
+    final token = _request;
+    setState(() => _loadingMore = true);
+    try {
+      final next = await widget.repository.loadUsers(
+        query: _search.text,
+        filter: _filter,
+        offset: _page.users.length,
+      );
+      if (!mounted || token != _request) return;
+      setState(() {
+        _page = _page.followedBy(next);
+        _loadingMore = false;
+      });
+    } catch (_) {
+      if (!mounted || token != _request) return;
+      setState(() => _loadingMore = false);
+      _say('Could not load more drivers.');
+    }
+  }
+
+  void _changeFilter(AdminAccessFilter filter) {
+    if (filter == _filter) return;
+    setState(() => _filter = filter);
+    unawaited(_reload());
+  }
+
+  void _say(String message) => ScaffoldMessenger.of(
+    context,
+  ).showSnackBar(SnackBar(content: Text(message)));
 
   @override
   Widget build(BuildContext context) => SoftScaffold(
@@ -48,68 +129,85 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       IconButton(
         key: const ValueKey('admin-refresh'),
         tooltip: 'Refresh dashboard',
-        onPressed: _refresh,
+        onPressed: () => unawaited(_reload(keepDepth: true)),
         icon: const Icon(Icons.refresh_rounded),
       ),
       const SizedBox(width: Space.sm),
     ],
-    body: PageFrame(
-      maxWidth: 1180,
-      child: FutureBuilder<_AdminDashboardData>(
-        future: _data,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState != ConnectionState.done) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (snapshot.hasError || !snapshot.hasData) {
-            return _AdminError(onRetry: _refresh);
-          }
-          final data = snapshot.requireData;
-          return ListView(
-            children: [
-              Text(
-                'Platform overview',
-                style: Theme.of(
-                  context,
-                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
-              ),
-              Space.gapXs,
-              Text(
-                'A live view of drivers, activity, and account connections.',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-              ),
-              Space.gapLg,
-              _OverviewGrid(overview: data.overview),
-              Space.gapLg,
-              _PlatformHealth(overview: data.overview),
-              Space.gapXl,
-              _UsersHeader(
-                controller: _search,
-                onSearch: _refresh,
-                count: data.users.length,
-              ),
-              Space.gapMd,
-              if (data.users.isEmpty)
-                const _NoUsers()
-              else
-                for (final user in data.users) ...[
-                  _AdminUserCard(
-                    user: user,
-                    busy: _changingUserId == user.id,
-                    onCloudAccessChanged: (enabled) =>
-                        _changeCloudAccess(user, enabled),
-                  ),
-                  Space.gapSm,
-                ],
-              const SizedBox(height: Space.xxl),
-            ],
-          );
-        },
-      ),
-    ),
+    body: PageFrame(maxWidth: 1180, child: _body(context)),
   );
+
+  Widget _body(BuildContext context) {
+    final overview = _overview;
+    if (_failed && overview == null) {
+      return _AdminError(onRetry: () => unawaited(_reload()));
+    }
+    if (_loading && overview == null) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (overview == null) {
+      return _AdminError(onRetry: () => unawaited(_reload()));
+    }
+    final theme = Theme.of(context);
+    return ListView(
+      children: [
+        Text(
+          'Platform overview',
+          style: theme.textTheme.titleLarge?.copyWith(
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        Space.gapXs,
+        Text(
+          'A live view of drivers, activity, and account connections.',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        Space.gapLg,
+        _OverviewGrid(overview: overview),
+        Space.gapLg,
+        _PlatformHealth(overview: overview),
+        Space.gapXl,
+        _UsersHeader(
+          controller: _search,
+          onSearch: () => unawaited(_reload()),
+          shown: _page.users.length,
+          total: _page.total,
+          filter: _filter,
+          onFilterChanged: _changeFilter,
+        ),
+        Space.gapMd,
+        if (_loading)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: Space.xl),
+            child: Center(child: CircularProgressIndicator()),
+          )
+        else if (_page.users.isEmpty)
+          _NoUsers(filter: _filter)
+        else ...[
+          for (final user in _page.users) ...[
+            _AdminUserCard(
+              user: user,
+              busy: _changingUserId == user.id,
+              onCloudAccessChanged: (enabled) =>
+                  unawaited(_changeCloudAccess(user, enabled)),
+            ),
+            Space.gapSm,
+          ],
+          if (_page.hasMore)
+            _LoadMore(
+              busy: _loadingMore,
+              remaining: _page.total - _page.users.length,
+              onPressed: () => unawaited(_loadMore()),
+            ),
+        ],
+        Space.gapXl,
+        _RecentActions(actions: _actions),
+        const SizedBox(height: Space.xxl),
+      ],
+    );
+  }
 
   Future<void> _changeCloudAccess(AdminUserSummary user, bool enabled) async {
     if (!enabled) {
@@ -140,23 +238,19 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     try {
       await widget.repository.setCloudAccess(userId: user.id, enabled: enabled);
       if (!mounted) return;
-      setState(() {
-        _changingUserId = null;
-        _data = _load();
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            enabled ? 'Cloud access restored' : 'Cloud access paused',
-          ),
-        ),
-      );
+      setState(() => _changingUserId = null);
+      _say(enabled ? 'Cloud access restored' : 'Cloud access paused');
+      // Refetches the rows already on screen rather than the first page, so an
+      // owner who paged deep to find this driver stays where they were.
+      await _reload(keepDepth: true);
     } catch (_) {
       if (!mounted) return;
       setState(() => _changingUserId = null);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not update cloud access.')),
-      );
+      // The control plane refuses some changes outright — an owner's own
+      // account, or another owner's. Those arrive here as a failure, and the
+      // switch has already snapped back, so the message has to say that the
+      // change did not happen rather than that something went wrong.
+      _say('That change was refused. Cloud access is unchanged.');
     }
   }
 }
@@ -333,12 +427,27 @@ class _UsersHeader extends StatelessWidget {
   const _UsersHeader({
     required this.controller,
     required this.onSearch,
-    required this.count,
+    required this.shown,
+    required this.total,
+    required this.filter,
+    required this.onFilterChanged,
   });
 
   final TextEditingController controller;
   final VoidCallback onSearch;
-  final int count;
+  final int shown;
+  final int total;
+  final AdminAccessFilter filter;
+  final ValueChanged<AdminAccessFilter> onFilterChanged;
+
+  /// "12 drivers" while everything matching is on screen, "50 of 900" once it
+  /// is not — so the count never implies the list is complete when it is a
+  /// page of something larger.
+  String get _count {
+    if (total == 0) return 'None shown';
+    if (shown >= total) return '$total ${total == 1 ? 'driver' : 'drivers'}';
+    return '$shown of $total';
+  }
 
   @override
   Widget build(BuildContext context) => LayoutBuilder(
@@ -353,7 +462,8 @@ class _UsersHeader extends StatelessWidget {
             ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
           ),
           Text(
-            '$count shown',
+            _count,
+            key: const ValueKey('admin-user-count'),
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
               color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
@@ -378,20 +488,180 @@ class _UsersHeader extends StatelessWidget {
           ),
         ),
       );
+      final chips = Wrap(
+        spacing: Space.sm,
+        children: [
+          for (final option in AdminAccessFilter.values)
+            ChoiceChip(
+              key: ValueKey('admin-filter-${option.name}'),
+              label: Text(option.label),
+              selected: option == filter,
+              onSelected: (_) => onFilterChanged(option),
+            ),
+        ],
+      );
       if (constraints.maxWidth < 600) {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [title, Space.gapMd, search],
+          children: [title, Space.gapMd, search, Space.gapMd, chips],
         );
       }
-      return Row(
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Expanded(child: title),
-          search,
+          Row(
+            children: [
+              Expanded(child: title),
+              search,
+            ],
+          ),
+          Space.gapMd,
+          chips,
         ],
       );
     },
   );
+}
+
+class _LoadMore extends StatelessWidget {
+  const _LoadMore({
+    required this.busy,
+    required this.remaining,
+    required this.onPressed,
+  });
+
+  final bool busy;
+  final int remaining;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: OutlinedButton.icon(
+      key: const ValueKey('admin-load-more'),
+      onPressed: busy ? null : onPressed,
+      icon: busy
+          ? const SizedBox.square(
+              dimension: 16,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : const Icon(Icons.expand_more_rounded),
+      label: Text(busy ? 'Loading…' : 'Load $remaining more'),
+    ),
+  );
+}
+
+/// The record of who changed whose access.
+///
+/// Shown in the dashboard rather than left in the database because the point of
+/// logging an owner action is that another owner can see it happened.
+class _RecentActions extends StatelessWidget {
+  const _RecentActions({required this.actions});
+
+  final List<AdminAction> actions;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    return Column(
+      key: const ValueKey('admin-recent-actions'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Access changes',
+          style: theme.textTheme.titleLarge?.copyWith(
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        Space.gapXs,
+        Text(
+          'Every pause and restore, with the owner who made it.',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: colors.onSurfaceVariant,
+          ),
+        ),
+        Space.gapMd,
+        GlassSurface(
+          elevation: Elevation.flat,
+          padding: const EdgeInsets.symmetric(
+            horizontal: Space.lg,
+            vertical: Space.sm,
+          ),
+          child: actions.isEmpty
+              ? Padding(
+                  padding: const EdgeInsets.symmetric(vertical: Space.md),
+                  child: Text(
+                    'No access has been paused or restored yet.',
+                    style: theme.textTheme.bodyMedium,
+                  ),
+                )
+              : Column(
+                  children: [
+                    for (final (index, action) in actions.indexed) ...[
+                      if (index > 0) const Divider(height: 1),
+                      _ActionRow(action: action),
+                    ],
+                  ],
+                ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ActionRow extends StatelessWidget {
+  const _ActionRow({required this.action});
+
+  final AdminAction action;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: Space.md),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            action.paused
+                ? Icons.pause_circle_outline_rounded
+                : Icons.play_circle_outline_rounded,
+            size: 20,
+            color: action.paused ? colors.error : colors.primary,
+          ),
+          Space.gapMd,
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(action.summary, style: theme.textTheme.bodyMedium),
+                const SizedBox(height: 2),
+                Text(
+                  [
+                    if (action.actorEmail case final actor?
+                        when actor.isNotEmpty)
+                      actor,
+                    _when(context, action.at),
+                  ].join(' · '),
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: colors.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _when(BuildContext context, DateTime at) {
+    final local = at.toLocal();
+    final localizations = MaterialLocalizations.of(context);
+    return '${localizations.formatShortDate(local)} '
+        '${localizations.formatTimeOfDay(TimeOfDay.fromDateTime(local))}';
+  }
 }
 
 class _AdminUserCard extends StatelessWidget {
@@ -528,13 +798,25 @@ class _UserMetric extends StatelessWidget {
 }
 
 class _NoUsers extends StatelessWidget {
-  const _NoUsers();
+  const _NoUsers({required this.filter});
+
+  final AdminAccessFilter filter;
+
+  /// Names the filter, so an owner who has narrowed to Paused and found
+  /// nothing reads "no paused drivers" rather than concluding the search
+  /// itself came back empty.
+  String get _message => switch (filter) {
+    AdminAccessFilter.all => 'No drivers match this search.',
+    AdminAccessFilter.active => 'No active drivers match this search.',
+    AdminAccessFilter.paused => 'No drivers have their access paused.',
+  };
 
   @override
   Widget build(BuildContext context) => GlassSurface(
     elevation: Elevation.flat,
     child: Text(
-      'No drivers match this search.',
+      _message,
+      key: const ValueKey('admin-no-users'),
       textAlign: TextAlign.center,
       style: Theme.of(context).textTheme.bodyMedium,
     ),
@@ -562,11 +844,4 @@ class _AdminError extends StatelessWidget {
       ),
     ),
   );
-}
-
-class _AdminDashboardData {
-  const _AdminDashboardData({required this.overview, required this.users});
-
-  final AdminOverview overview;
-  final List<AdminUserSummary> users;
 }

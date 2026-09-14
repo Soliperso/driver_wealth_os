@@ -166,7 +166,7 @@ final class GeolocatorLocationTracker implements LocationTracker {
         // tracking is running.
         foregroundNotificationConfig: const ForegroundNotificationConfig(
           notificationTitle: 'Driving session active',
-          notificationText: 'Driver Wealth is tracking time and mileage.',
+          notificationText: 'Keeprate is tracking time and mileage.',
           notificationIcon: AndroidResource(
             name: 'ic_launcher',
             defType: 'mipmap',

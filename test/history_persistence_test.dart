@@ -42,7 +42,7 @@ void main() {
       AppSnapshot(driverName: 'Ahmed', dailyGoal: 300, shifts: [_shift()]),
     );
 
-    await tester.pumpWidget(DriverWealthApp(store: store));
+    await tester.pumpWidget(KeeprateApp(store: store));
     await tester.pumpAndSettle();
 
     expect(find.text('Hi, Ahmed!'), findsOneWidget);
@@ -53,7 +53,7 @@ void main() {
 
     await tester.pumpWidget(const SizedBox());
     await tester.pump();
-    await tester.pumpWidget(DriverWealthApp(store: store));
+    await tester.pumpWidget(KeeprateApp(store: store));
     await tester.pumpAndSettle();
 
     expect(find.text('Hi, Ahmed!'), findsOneWidget);
@@ -64,7 +64,7 @@ void main() {
     final store = MemoryAppStore(
       AppSnapshot(driverName: 'Ahmed', shifts: [_shift()]),
     );
-    await tester.pumpWidget(DriverWealthApp(store: store));
+    await tester.pumpWidget(KeeprateApp(store: store));
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('History'));

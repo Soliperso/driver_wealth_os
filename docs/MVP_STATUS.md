@@ -1,4 +1,4 @@
-# Driver Wealth OS MVP Status
+# Keeprate MVP Status
 
 This audit uses the accepted vertical-slice roadmap from the project conversation because the original generated PRD and roadmap Markdown downloads were not present in the local project.
 
@@ -108,14 +108,36 @@ persistence, daily-goal states, platform coverage, history operations, weekly
 analytics, Earnings DNA, Money Leaks, Coach behavior, expense sync precedence,
 the tax-year comparison, and the CSV export.
 
-It is **fully green** — 275 passing, 3 skipped, 0 failing. The skipped tests are
-the visual-golden and tooling suites, which are tagged and run on request:
+It is **fully green** — 285 passing, 3 skipped, 0 failing. Every skip is a
+tagged visual-golden suite, run on request:
 
 ```sh
 flutter test --tags=visual --run-skipped
 ```
 
+Nothing else is skipped, and nothing else should be. A bare `skip: true` on a
+test that covers shipped behaviour is a silenced regression, not a category of
+test meant to sit out — the count above is only meaningful while that stays
+true.
+
 For a long stretch the suite sat at eight failures that were specifications for
 features nobody had built yet, which trained everyone to read red as normal. That
 is how a navigation tile stayed accidentally commented out for days. A failing
 test now means a regression.
+
+It happened a second time, and was fixed on 1 September 2026. The Settings tile
+that opens `WorkAccountsScreen` had been commented out, which left connecting a
+work account, the Argyle Link session and the whole imported-earnings path
+unreachable — `AppShell` still passed `onConnectAccounts` and `_connectAccounts()`
+still built the screen, but no route led to it. This time the covering test was
+not left to fail: it was marked `skip: true` with the note "The Settings entry
+point is commented out for now", so the suite reported green over a feature the
+README lists as shipped.
+
+Nothing justified hiding it. `SetupRequiredConnectionGateway` already handles a
+build with no provider credentials by showing an honest setup message, which is
+the documented behaviour. The tile is restored and the test unskipped; it passes.
+
+The lesson is narrower than "read the failures": a skip added to keep the suite
+green is a failure wearing a disguise, and it costs more than a red test because
+nothing counts it.

@@ -37,7 +37,7 @@ class _PrivacySecurityScreenState extends State<PrivacySecurityScreen> {
             icon: Icons.shield_outlined,
             title: 'Your data stays yours',
             body:
-                'Driver Wealth stores a working copy on this device so session tracking and edits keep working offline.',
+                'Keeprate stores a working copy on this device so session tracking and edits keep working offline.',
           ),
           const SizedBox(height: Space.md),
           if (widget.accountEmail != null) ...[

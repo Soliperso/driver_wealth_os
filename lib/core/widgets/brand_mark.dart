@@ -18,7 +18,7 @@ class BrandMark extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Semantics(
-    label: 'Driver Wealth OS logo',
+    label: 'Keeprate logo',
     image: true,
     child: Image.asset(
       'assets/icon/app_mark.png',

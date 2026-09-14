@@ -24,7 +24,7 @@ void main() {
     var now = startedAt;
 
     await tester.pumpWidget(
-      DriverWealthApp(
+      KeeprateApp(
         store: store,
         locationTracker: tracker,
         // Freeze the live clock so the tree can reach a settled frame.
@@ -114,7 +114,7 @@ void main() {
     final store = MemoryAppStore(const AppSnapshot(driverName: 'Ahmed'));
 
     await tester.pumpWidget(
-      DriverWealthApp(
+      KeeprateApp(
         store: store,
         locationTracker: tracker,
         drivingRefreshInterval: null,
@@ -128,7 +128,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // Explained before the system dialog, not after.
-    expect(find.text('Why Driver Wealth needs your location'), findsOneWidget);
+    expect(find.text('Why Keeprate needs your location'), findsOneWidget);
     expect(
       find.textContaining('Only during a session you started'),
       findsOneWidget,
@@ -140,7 +140,7 @@ void main() {
     // Proves the tap actually landed. Without this the test would still pass
     // if the button were off-screen, since a missed tap and a decline look
     // identical from the outside.
-    expect(find.text('Why Driver Wealth needs your location'), findsNothing);
+    expect(find.text('Why Keeprate needs your location'), findsNothing);
 
     // Declining is a real answer: nothing was started and nothing persisted.
     expect(find.byKey(const ValueKey('driving-session-active')), findsNothing);
@@ -159,7 +159,7 @@ void main() {
     final store = MemoryAppStore(const AppSnapshot(driverName: 'Ahmed'));
 
     await tester.pumpWidget(
-      DriverWealthApp(
+      KeeprateApp(
         store: store,
         locationTracker: tracker,
         drivingRefreshInterval: null,
@@ -212,7 +212,7 @@ void main() {
     );
 
     await tester.pumpWidget(
-      DriverWealthApp(
+      KeeprateApp(
         store: store,
         locationTracker: tracker,
         // Freeze the live clock so the tree can reach a settled frame.
@@ -242,7 +242,7 @@ void main() {
     var now = startedAt;
 
     await tester.pumpWidget(
-      DriverWealthApp(
+      KeeprateApp(
         store: store,
         locationTracker: tracker,
         drivingRefreshInterval: null,
@@ -345,7 +345,7 @@ void main() {
     );
 
     await tester.pumpWidget(
-      DriverWealthApp(
+      KeeprateApp(
         store: store,
         locationTracker: tracker,
         drivingRefreshInterval: null,
@@ -381,7 +381,7 @@ void main() {
     );
 
     await tester.pumpWidget(
-      DriverWealthApp(
+      KeeprateApp(
         store: store,
         locationTracker: tracker,
         drivingRefreshInterval: null,
@@ -420,7 +420,7 @@ void main() {
     );
 
     await tester.pumpWidget(
-      DriverWealthApp(
+      KeeprateApp(
         store: store,
         locationTracker: tracker,
         drivingRefreshInterval: null,

@@ -10,7 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   testWidgets('onboarding opens the Today dashboard', (tester) async {
-    await tester.pumpWidget(const DriverWealthApp());
+    await tester.pumpWidget(const KeeprateApp());
     expect(find.text('Drive smarter.\nKeep more.'), findsOneWidget);
 
     await tester.enterText(find.byType(EditableText), 'Ahmed');
@@ -24,7 +24,7 @@ void main() {
   });
 
   testWidgets('work account flow lists supported platforms', (tester) async {
-    await tester.pumpWidget(const DriverWealthApp());
+    await tester.pumpWidget(const KeeprateApp());
     await tester.enterText(find.byType(EditableText), 'Ahmed');
     final continueButton = find.text('Continue');
     await tester.ensureVisible(continueButton);
@@ -62,7 +62,7 @@ void main() {
   });
 
   testWidgets('daily goal can be edited from the dashboard', (tester) async {
-    await tester.pumpWidget(const DriverWealthApp());
+    await tester.pumpWidget(const KeeprateApp());
     await tester.enterText(find.byType(EditableText), 'Ahmed');
     final continueButton = find.text('Continue');
     await tester.ensureVisible(continueButton);
@@ -186,7 +186,7 @@ void main() {
   testWidgets('manual shift saves once and returns to dashboard', (
     tester,
   ) async {
-    await tester.pumpWidget(const DriverWealthApp());
+    await tester.pumpWidget(const KeeprateApp());
     await tester.enterText(find.byType(EditableText), 'Ahmed');
     await tester.ensureVisible(find.text('Continue'));
     await tester.tap(find.text('Continue'));

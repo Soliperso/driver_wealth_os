@@ -51,7 +51,7 @@ class LocationDisclosureSheet extends StatelessWidget {
                     ),
                     Space.gapLg,
                     Text(
-                      'Why Driver Wealth needs your location',
+                      'Why Keeprate needs your location',
                       style: Theme.of(context).textTheme.titleLarge,
                     ),
                     Space.gapSm,
@@ -85,7 +85,7 @@ class LocationDisclosureSheet extends StatelessWidget {
                       title: 'Used to measure distance, nothing else',
                       detail:
                           'Your positions are added up into a mileage total on '
-                          'this phone. Driver Wealth does not sell, share, or '
+                          'this phone. Keeprate does not sell, share, or '
                           'advertise against where you drive.',
                     ),
                   ],

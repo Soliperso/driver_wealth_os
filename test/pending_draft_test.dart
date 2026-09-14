@@ -35,7 +35,7 @@ void main() {
     var now = startedAt;
 
     await tester.pumpWidget(
-      DriverWealthApp(
+      KeeprateApp(
         store: store,
         locationTracker: tracker,
         drivingRefreshInterval: null,
@@ -99,7 +99,7 @@ void main() {
     );
 
     await tester.pumpWidget(
-      DriverWealthApp(
+      KeeprateApp(
         store: store,
         locationTracker: tracker,
         drivingRefreshInterval: null,
@@ -147,7 +147,7 @@ void main() {
     );
 
     await tester.pumpWidget(
-      DriverWealthApp(
+      KeeprateApp(
         store: store,
         locationTracker: tracker,
         drivingRefreshInterval: null,

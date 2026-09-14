@@ -43,7 +43,7 @@ void main() {
       AppSnapshot(driverName: 'Ahmed', shifts: [multiApp(), soloApp()]),
     );
 
-    await tester.pumpWidget(DriverWealthApp(store: store, clock: clock));
+    await tester.pumpWidget(KeeprateApp(store: store, clock: clock));
     await tester.pumpAndSettle();
     await tester.tap(find.text('History'));
     await tester.pumpAndSettle();
@@ -74,7 +74,7 @@ void main() {
       AppSnapshot(driverName: 'Ahmed', shifts: [multiApp()]),
     );
 
-    await tester.pumpWidget(DriverWealthApp(store: store, clock: clock));
+    await tester.pumpWidget(KeeprateApp(store: store, clock: clock));
     await tester.pumpAndSettle();
     await tester.tap(find.text('History'));
     await tester.pumpAndSettle();
@@ -106,7 +106,7 @@ void main() {
       AppSnapshot(driverName: 'Ahmed', shifts: [soloApp()]),
     );
 
-    await tester.pumpWidget(DriverWealthApp(store: store, clock: clock));
+    await tester.pumpWidget(KeeprateApp(store: store, clock: clock));
     await tester.pumpAndSettle();
     await tester.tap(find.text('History'));
     await tester.pumpAndSettle();
